@@ -4,7 +4,13 @@ Reverse engineering the Anycubic Mono 4K
 The [Anycubic Mono 4K](https://www.anycubic.com/collections/3d-printers/products/photon-mono-4k)
 is my first 3D printer. It's been quite a steep learning curve to print with
 resin, but it's really satisfying to make objects once the workflow is ironed
-out. Here's an example of a printed object.
+out.
+
+Here's the printer.
+
+![Anycubic Mono 4K](part0/printer.jpg)
+
+Here's an example of a printed object.
 
 ![Printed Bracket](part0/bracket_print.jpg)
 
@@ -23,8 +29,18 @@ Apparently, we have to wait for a firmware update, but I'd rather not wait.
   too long and my patience runs down. Too fast, and the print delaminates and
   it's trash. Perhaps we can detect the tensile pressure while lifting, or when
   the printed layer unstick from the FEP film to optimize printing speed.
+* Add a temperature control unit.
+* Write the new firmware purely in [Rust](https://www.rust-lang.org/what/embedded)!
 
 ## Table of content
 
+Writeup:
+
 * [Part 0: Discovery of the hardware and firmware extraction](part0)
 * Part 1: Firmware Analysis. TODO
+
+Resources:
+
+* PCB photos: [./pcb](pcb) folder
+* Firmwares: [./firmware](firmware) folder
+* Datasheets: [./datasheet](datasheet) folder

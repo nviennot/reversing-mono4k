@@ -1,28 +1,45 @@
 Discovery of the hardware and firmware extraction
 ==================================================
 
-## Hardware introduction
+## Hardware discovery
 
-The controller board is shown as below.
-The board of the Mono 4K is very similar to the Mono:
+![The Anycubic Mono 4K printer](printer_annotated.jpg)
+
+We can open the printer from the bottom panel via 4 hex screws. We see the UV array,
+the stepper motor, and the controller board.
+
+Note that there is no fan. Perhaps we could install one with a heater to have a
+temperature controlled environment. Some resins do better at 30°C.
+
+![Inside](inside_printer.jpg)
+
+I took high quality photos of the main controller board, it will be helpful
+later to figure out the schematic. You may find the high resolution photos in
+the [pcb/](../pcb) folder.
+
+Here's the board annotated.
+
+![Board](board.jpg)
+
+The inside of the Mono 4K is very similar to the original Mono:
 https://bleughbleugh.wordpress.com/2020/10/12/anycubic-photon-mono-teardown-part-1/
 
-![Controller Board](controller_board.jpg)
-
-A couple of important elements:
+A couple of important components:
 * GigaDevice GD32F307VET6 Arm Cortex M4 MCU. It has 512KB of internal flash, and 96KB of RAM.
-  [Datasheet](http://www.gd32mcu.com/data/documents/shujushouce/GD32F307xx_Datasheet_Rev1.2.pdf)
-  [User Manual](https://www.gigadevice.com/manual/gd32f307xxxx-user-manual/)
-* Anlogic FPGA EF2L45LG144B (Most likely, should be under the gray heat sink).
-* Winbond 25Q128JVSQ 16MB flash SPI chip.
-  [Datasheet](http://www.winbond.com/resource-files/w25q128jv%20spi%20revc%2011162016.pdf)
-* Winbond W9864G6KH-6 32MB SDRAM chip. [Datasheet](https://www.winbond.com/resource-files/w9864g6kh_a02.pdf)
+* Anlogic FPGA EF2L45LG144B driving the LCD Panel.
+* Winbond 25Q128JVSQ 16MB flash SPI chip used by the MCU.
+* Winbond W9864G6KH-6 32MB SDRAM chip used by the FPGA.
+
+You can find their datasheets in [`datasheet/`](../datasheet/).
 
 ## Connecting to the ARM MCU
 
 Before attempting writing a new firmware for the unit, it's going to be helpful
-to see what they are doing. We'll need to understand how to update the firmware
-from the regular way so that we can have users trying out our new firmware.
+to see what they are doing:
+* We'll need to understand how to update the firmware from the regular way so
+  that we can have users trying out our new firmware.
+* How do we talk to the FPGA? It's easier to see the firmware than hooking a
+  logic analyzer to the FPGA/MCU bus.
 
 Anycubic does not provide a firmware for the Mono 4K at this time. (See on the
 official anycubic website
@@ -31,13 +48,18 @@ We're going to have to extract it. The hope is to connect via debug protocol to
 the MCU. Luckily, there's a nice little header on the top left of the board
 looking like like an ARM Serial Wire Debug (SWD) header.
 
+The silk screen on the PCB shows `3V3, SLK, DIO, _, GND`.
+
+I connect my [J-Link](https://www.segger.com/products/debug-probes/j-link/)
+probe to the header following their
+[pinouts](https://www.segger.com/products/debug-probes/j-link/technology/interface-description/#swd-connector-pinout).
+`3V3` goes to `VTref`, `SLK` goes to `SWCLK`, `DIO` goes to `SWDIO`, and `GND`
+to `GND`. The `VTref` connection is not really necessary, but we'll plug it in
+for good measure.
+
 ![Debug Header](debug_header.jpg)
 
-The silk screen on the PCB shows `3V3, SLK, DIO, _, GND`. The non-specified wire
-might be the reset pin.
-
-I connected my [J-Link](https://www.segger.com/products/debug-probes/j-link/)
-probe to the header, and running the following shows:
+We're ready to run the following:
 
 ```
 » JLinkExe -AutoConnect 1 -Device GD32F307VE -If SWD -Speed 4000
@@ -75,11 +97,12 @@ ROMTbl[0] @ E00FF000
 Cortex-M4 identified.
 J-Link>
 ```
+Wonderful! We are connected to the MCU, we can do whatever we want it seems,
+including halting, reseting, stepping instructions, poking at memory, etc.
 
-Wonderful! We get to reach the MCU.
-
-Note that I tried using Open-OCD, with the following configuration, but I didn't
-get far with it as the documentation is rather cryptic.
+Note that I tried using [OpenOCD](https://openocd.org/), with the following
+configuration, controlling the CPU works, but I didn't get far with dumping the
+firmware it as the documentation is rather cryptic. Let's not use it for now.
 
 ```
 adapter driver jlink
@@ -94,18 +117,19 @@ dap create $_CHIPNAME.dap -chain-position $_CHIPNAME.cpu
 target create $_CHIPNAME.cpu cortex_m -dap gd32f307.dap
 ```
 
-## Dumping the firmware
+## Dumping the MCU firmware
 
-The Anycubic Mono 4K controller board is a derivated board from Chitu systems.
+The Anycubic Mono 4K controller board is a derivate board from Chitu systems.
 You can see boards they are offering [here](https://shop.chitusystems.com/product-category/).
 
 In the [download section](https://shop.chitusystems.com/download/), they show an
 FPGA firmware, a core firmware, and a UI firmware.
 
-Rigth now, we are after the core firmware, which sits in the MCU, and I couldn't
+Right now, we are after the core firmware, which sits in the MCU, and I couldn't
 find a firmware to download for the Mono 4K.
 
-With the JLink software, it's rather straightforward with the `savebin` command:
+With the JLink software, it's rather straightforward to dump the firmware with
+the `savebin` command:
 
 ```
 J-Link> savebin mcu.bin 0 0x80000
@@ -113,7 +137,7 @@ Opening binary file for writing... [mcu.bin]
 Reading 524288 bytes from addr 0x00000000 into file...O.K.
 ```
 
-After 1.3s, we have the MCU firmware on disk.
+After 1.3s, we have the MCU firmware on disk. You can find it in [`firmware/`](../firmware/).
 
 ## Quick analysis
 
@@ -123,7 +147,7 @@ Let's look at the firmware on [binvis](https://binvis.io/).
 
 It looks right (not encrypted, nor all blank).
 
-We can look at the strings that are contained in this binary. 
+We can look at the strings that are contained in this binary.
 
 ```
 » strings mcu.bin | sort -u
@@ -139,9 +163,7 @@ Homing,please wait...
 V0.0.11
 ```
 
-The firmware we have extracted is the real deal
+The firmware we have extracted is good.
 
-You can find it in [`firmware/mcu.bin`](../firmware/).
-
-Next part, we'll look into deassembling it and understand a bit more how this
+Next part, we'll look into disassembling it and understand a bit more how this
 embedded system is organized.
