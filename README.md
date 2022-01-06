@@ -36,11 +36,13 @@ Apparently, we have to wait for a firmware update, but I'd rather not wait.
 
 Writeup:
 
-* [Part 0: Discovery of the hardware and firmware extraction](part0)
-* Part 1: Firmware Analysis. TODO
+* [Part 0: Discovery of the hardware and firmware extraction](part0/README.md)
+* [Part 1: Taking control of the MCU to dump the external flash](part1/README.md)
 
 Resources:
 
-* PCB photos: [./pcb](pcb) folder
-* Firmwares: [./firmware](firmware) folder
-* Datasheets: [./datasheet](datasheet) folder
+* Datasheets: [datasheet](datasheet) folder
+* Firmwares: [firmware](firmware) folder
+* PCB photos: [pcb](pcb) folder
+* Pin config: [print_ports_config.py](firmware/print_ports_config.py) and [port_config.txt](firmware/port_config.txt)
+

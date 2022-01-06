@@ -15,7 +15,7 @@ temperature controlled environment. Some resins do better at 30°C.
 
 I took high quality photos of the main controller board, it will be helpful
 later to figure out the schematic. You may find the high resolution photos in
-the [pcb/](../pcb) folder.
+the [pcb/](../pcb) folder, front and back.
 
 Here's the board annotated.
 
@@ -165,5 +165,5 @@ V0.0.11
 
 The firmware we have extracted is good.
 
-Next part, we'll look into disassembling it and understand a bit more how this
-embedded system is organized.
+[Next part, we'll try to access the external flash on the
+board](../part1/README.md)
