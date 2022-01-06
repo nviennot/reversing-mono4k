@@ -59,6 +59,8 @@ for good measure.
 
 ![Debug Header](debug_header.jpg)
 
+### J-Link
+
 We're ready to run the following:
 
 ```
@@ -72,7 +74,6 @@ Firmware: J-Link V10 compiled Nov  2 2021 12:14:50
 Hardware version: V10.10
 VTref=3.300V (fixed)
 Device "GD32F307VE" selected.
-
 
 Connecting to target via SWD
 Found SW-DP with ID 0x2BA01477
@@ -100,22 +101,97 @@ J-Link>
 Wonderful! We are connected to the MCU, we can do whatever we want it seems,
 including halting, reseting, stepping instructions, poking at memory, etc.
 
-Note that I tried using [OpenOCD](https://openocd.org/), with the following
-configuration, controlling the CPU works, but I didn't get far with dumping the
-firmware it as the documentation is rather cryptic. Let's not use it for now.
+### OpenOCD
+
+We can also use [OpenOCD](https://openocd.org/) which looks to be a widely used
+tool. It's open-source, unlike the J-Link software. We could learn a few things
+using it. Unfortunately, the documentation is poor, so it's going to be challenging.
+
+I managed to make it work with the following. The way it works is that you feed
+it a configuration file, and you can connect to it via a TCP connection to
+issue commands. It uses the Tcl scripting language.
 
 ```
+# openocd.cfg
+
 adapter driver jlink
 adapter speed 4000
 transport select swd
 
-set _CHIPNAME gd32f307
-set _CPUTAPID 0x1000563d
+swd newdap mcu cpu -enable
+dap create mcu.dap -chain-position mcu.cpu
+target create mcu.cpu cortex_m -dap mcu.dap
 
-swd newdap $_CHIPNAME cpu -irlen 5 -expected-id $_CPUTAPID
-dap create $_CHIPNAME.dap -chain-position $_CHIPNAME.cpu
-target create $_CHIPNAME.cpu cortex_m -dap gd32f307.dap
+init
+echo [dap info]
 ```
+
+```
+» openocd -f openocd.cfg
+Open On-Chip Debugger 0.11.0
+Licensed under GNU GPL v2
+For bug reports, read
+        http://openocd.org/doc/doxygen/bugs.html
+Info : J-Link V10 compiled Nov  2 2021 12:14:50
+Info : Hardware version: 10.10
+Info : VTarget = 3.300 V
+Info : clock speed 4000 kHz
+Info : SWD DPIDR 0x2ba01477
+Info : mcu.cpu: hardware has 6 breakpoints, 4 watchpoints
+Info : starting gdb server for mcu.cpu on 3333
+Info : Listening on port 3333 for gdb connections
+AP ID register 0x24770011
+        Type is MEM-AP AHB3
+MEM-AP BASE 0xe00ff003
+        Valid ROM table present
+                Component base address 0xe00ff000
+                Peripheral ID 0x07000d1329
+                Designer is 0x7d1, GigaDevice Semiconductor (Beijing) Inc
+                Part is 0x329, Unrecognized
+                Component class is 0x1, ROM table
+                MEMTYPE system memory present on bus
+        ROMTABLE[0x0] = 0xfff0f003
+                Component base address 0xe000e000
+                Peripheral ID 0x04000bb00c
+                Designer is 0x4bb, ARM Ltd
+                Part is 0xc, Cortex-M4 SCS (System Control Space)
+                Component class is 0xe, Generic IP component
+        ROMTABLE[0x4] = 0xfff02003
+                Component base address 0xe0001000
+                Peripheral ID 0x04003bb002
+                Designer is 0x4bb, ARM Ltd
+                Part is 0x2, Cortex-M3 DWT (Data Watchpoint and Trace)
+                Component class is 0xe, Generic IP component
+        ROMTABLE[0x8] = 0xfff03003
+                Component base address 0xe0002000
+                Peripheral ID 0x04002bb003
+                Designer is 0x4bb, ARM Ltd
+                Part is 0x3, Cortex-M3 FPB (Flash Patch and Breakpoint)
+                Component class is 0xe, Generic IP component
+        ROMTABLE[0xc] = 0xfff01003
+                Component base address 0xe0000000
+                Peripheral ID 0x04003bb001
+                Designer is 0x4bb, ARM Ltd
+                Part is 0x1, Cortex-M3 ITM (Instrumentation Trace Module)
+                Component class is 0xe, Generic IP component
+        ROMTABLE[0x10] = 0xfff41003
+                Component base address 0xe0040000
+                Peripheral ID 0x04000bb9a1
+                Designer is 0x4bb, ARM Ltd
+                Part is 0x9a1, Cortex-M4 TPIU (Trace Port Interface Unit)
+                Component class is 0x9, CoreSight component
+                Type is 0x11, Trace Sink, Port
+        ROMTABLE[0x14] = 0xfff42003
+                Component base address 0xe0041000
+                Invalid CID 0x00000000
+        ROMTABLE[0x18] = 0x0
+                End of ROM table
+
+Info : Listening on port 6666 for tcl connections
+Info : Listening on port 4444 for telnet connections
+```
+
+Looks like we can use this tool as well.
 
 ## Dumping the MCU firmware
 
@@ -128,6 +204,8 @@ FPGA firmware, a core firmware, and a UI firmware.
 Right now, we are after the core firmware, which sits in the MCU, and I couldn't
 find a firmware to download for the Mono 4K.
 
+### With J-Link software
+
 With the JLink software, it's rather straightforward to dump the firmware with
 the `savebin` command:
 
@@ -137,7 +215,19 @@ Opening binary file for writing... [mcu.bin]
 Reading 524288 bytes from addr 0x00000000 into file...O.K.
 ```
 
-After 1.3s, we have the MCU firmware on disk. You can find it in [`firmware/`](../firmware/).
+### With OpenOCD
+
+Same with OpenOCD it turns out.
+
+```
+» nc localhost 4444
+Open On-Chip Debugger
+> dump_image rom.bin 0 0x80000
+dumped 524288 bytes in 2.174999s (235.402 KiB/s)
+```
+
+Both methods give us the same thing. We have the MCU firmware on disk. You can
+find it in [`firmware/`](../firmware/).
 
 ## Quick analysis
 
