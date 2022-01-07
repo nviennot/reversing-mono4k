@@ -253,7 +253,9 @@ Homing,please wait...
 V0.0.11
 ```
 
-The firmware we have extracted is good.
+The firmware we have extracted is good. It's useful to keep, because we are
+going to replace it with our own. It's always a good thing to be able to revert
+our changes.
 
 [Next part, we'll try to access the external flash on the
 board](../part1/README.md)

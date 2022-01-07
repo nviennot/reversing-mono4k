@@ -1,5 +1,5 @@
-Taking control of the MCU to dump the external flash
-====================================================
+Planning to read the external flash
+===================================
 
 ## Discovering the MCU and external flash wiring
 
@@ -9,8 +9,8 @@ How about accessing the external flash chip next to the MCU, and read all of its
 content. It should contain the UI graphics of the touch screen, and perhaps the
 FPGA bitstream (the FPGA firmware if you will).
 
-Referring to the [pcb](../pcb), and the [datasheets](../datasheet) of the MCU
-and the flash component, we can figure out how they talk to each other.
+Referring to the [pcb](../pcb) photos, and the [datasheets](../datasheet) of the
+MCU and the flash chip, we can figure out how they talk to each other.
 
 ![Flash connected to the MCU](pcb.jpg)
 
@@ -187,3 +187,8 @@ It looks like there's support for external flash as shown
 [here](https://www.openocd.org/doc/html/Flash-Commands.html#index-cfi), with the
 `cfi` flash driver. But the documentation is really bad. How do we even specify
 what pins should be used by the flash driver?
+
+### Writing our own code
+
+It's time to dip our feet in the water and write some code that runs on the MCU.
+See next [part](../part2/README.md)
