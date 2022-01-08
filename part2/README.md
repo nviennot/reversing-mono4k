@@ -201,9 +201,10 @@ flash our soon to be compiled program in the internal flash of the chip.
 
 It turns out that the GD32F307 flash driver behaves the same way as the STM32F1X
 device families. (Same register addresses). It appears that the GD32 product
-line is a clone of the STM32 product line. See on
-[hackaday](https://hackaday.com/2020/10/22/stm32-clones-the-good-the-bad-and-the-ugly/).
-This will make our lives easier as we can copy/paste parts of the STM32 driver
+line is a clone of the STM32 product line. See this
+[hackaday article](https://hackaday.com/2020/10/22/stm32-clones-the-good-the-bad-and-the-ugly/)
+and this [GD32 decap](https://zeptobars.com/en/read/GD32F103CBT6-mcm-serial-flash-Giga-Devices).
+This could make our lives easier as we can copy/paste parts of the STM32 driver
 code.
 
 It's not an exact copy. Figuring out what are the differences will be tedious.
@@ -298,3 +299,5 @@ part to see how we can use this to send a large binary (like the external
 flash that we are after).
 
 The source code of the rust firmware can be found in [../src](../src).
+
+Go to [part 3](../part3/README.md)

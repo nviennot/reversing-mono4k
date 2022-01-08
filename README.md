@@ -1,6 +1,15 @@
 Reverse engineering the Anycubic Mono 4K
 ========================================
 
+## Table of content
+
+* [Part 0: Discovery of the hardware and firmware extraction](part0/README.md)
+* [Part 1: Planning to read the external flash](part1/README.md)
+* [Part 2: Creating a Rust development environment](part2/README.md)
+* [Part 3: Dumping the external flash](part3/README.md)
+
+## Introduction
+
 The [Anycubic Mono 4K](https://www.anycubic.com/collections/3d-printers/products/photon-mono-4k)
 is my first 3D printer. It's been quite a steep learning curve to print with
 resin, but it's really satisfying to make objects once the workflow is ironed
@@ -28,19 +37,13 @@ Apparently, we have to wait for a firmware update, but I'd rather not wait.
 * Optimize print speed. During printing, The lift speed is a big deal. Too slow, and the print takes
   too long and my patience runs down. Too fast, and the print delaminates and
   it's trash. Perhaps we can detect the tensile pressure while lifting, or when
-  the printed layer unstick from the FEP film to optimize printing speed.
-* Add a temperature control unit.
+  the printed layer unstick from the FEP film to optimize printing speed
+* Add a temperature control unit to keep the resin at temperature
+* Accept USB sticks as usual, but also allow the printer to act like a device
+  (USB OTG), and be controlled by a host.
 * Write the new firmware purely in [Rust](https://www.rust-lang.org/what/embedded)!
 
-## Table of content
-
-Writeup:
-
-* [Part 0: Discovery of the hardware and firmware extraction](part0/README.md)
-* [Part 1: Taking control of the MCU to dump the external flash](part1/README.md)
-* [Part 2: Creating a Rust development environment](part2/README.md)
-
-Resources:
+## Resources
 
 * Datasheets: [datasheet](datasheet) folder
 * Original firmware: [firmware](firmware) folder

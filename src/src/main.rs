@@ -15,8 +15,10 @@ use gd32f3::gd32f307;
 
 #[entry]
 fn main() -> ! {
-    hprintln!("Hello, world!");
-    panic!("We are done!");
+    use cortex_m_semihosting::{hio::open, nr};
+    let mut file = open("hello_world.bin\0", nr::open::RW_TRUNC_BINARY).unwrap();
+    file.write_all(b"We can send binaries").unwrap();
+    loop {}
 }
 
 
