@@ -30,7 +30,8 @@ A couple of important components:
 * Winbond 25Q128JVSQ 16MB flash SPI chip used by the MCU.
 * Winbond W9864G6KH-6 32MB SDRAM chip used by the FPGA.
 
-You can find their datasheets in [`datasheet/`](../datasheet/).
+You can find their datasheets in [`datasheet/`](../datasheet/). Well, except the
+FPGA one, I'm not sure where I can find it.
 
 ## Connecting to the ARM MCU
 

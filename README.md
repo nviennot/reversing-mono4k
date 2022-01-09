@@ -7,6 +7,7 @@ Reverse engineering the Anycubic Mono 4K
 * [Part 2: Planning the read of the external flash](/writeup/part2/README.md)
 * [Part 3: Creating a Rust development environment](/writeup/part3/README.md)
 * [Part 4: Dumping content of the external flash](/writeup/part4/README.md)
+* [Part 5: Graphics extraction from the external ROM](/writeup/part5/README.md)
 
 ## Introduction
 
@@ -49,11 +50,14 @@ Apparently, we have to wait for a firmware update, but I'd rather not wait.
 * [Part 2: Planning the read of the external flash](/writeup/part2/README.md)
 * [Part 3: Creating a Rust development environment](/writeup/part3/README.md)
 * [Part 4: Dumping content of the external flash](/writeup/part4/README.md)
+* [Part 5: Graphics extraction from the external ROM](/writeup/part5/README.md)
+
 
 ## Resources
 
 * Datasheets: [datasheet](/datasheet) folder
 * Original firmware: [firmware](/firmware) folder
+* UI images: [/firmware/ui](/firmware/ui) folder
 * PCB photos: [pcb](/pcb) folder
 * Pin config: [print_ports_config.py](/firmware/print_ports_config.py) and [port_config.txt](/firmware/port_config.txt)
 * Rust firmware: [src](/src) folder
