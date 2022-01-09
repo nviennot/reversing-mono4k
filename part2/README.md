@@ -60,7 +60,8 @@ Keil IDE to support the GD32F30x family of product.  There's one file called
 
 Devices are described in `GigaDevice.GD32F30x_DFP.pdsc`. This file describes the
 flash/memory layout for each device, as well as the corresponding SVD file.
-Here's an extract from `GD32F30x_CL.svd`.
+Here's an extract from `GD32F30x_CL.svd`. It's a fairly verbose XML file
+weighing a whooping 1.3MB.
 
 ```xml
 ...
@@ -196,18 +197,25 @@ compiler to target a Cortex-M4 with a floating point unit.
 
 ### OpenOCD + gdb configuration
 
-OpenOCD doesn't have official support for the GD32F307, and we need a way to
+OpenOCD doesn't have official support for the `GD32F307`, and we need a way to
 flash our soon to be compiled program in the internal flash of the chip.
 
-It turns out that the GD32F307 flash driver behaves the same way as the STM32F1X
-device families. (Same register addresses). It appears that the GD32 product
-line is a clone of the STM32 product line. See this
+It turns out that the `GD32F307` flash driver behaves the same way as the `STM32F1X`
+device families. (Same register addresses). It appears that the `GD32` product
+line is a clone of the `STM32` product line. See this
 [hackaday article](https://hackaday.com/2020/10/22/stm32-clones-the-good-the-bad-and-the-ugly/)
 and this [GD32 decap](https://zeptobars.com/en/read/GD32F103CBT6-mcm-serial-flash-Giga-Devices).
 This could make our lives easier as we can copy/paste parts of the STM32 driver
-code.
+code. It's not an exact copy. Figuring out what are the differences will most likely
+be tedious.
 
-It's not an exact copy. Figuring out what are the differences will be tedious.
+![gd32_decap](gd32_decap.jpg)
+Photo from [zeptobars](https://zeptobars.com)
+
+Look at these animals. This chip is born as a hack (the same could be said for
+any useful system). But hey, it works fine apparently. A notable difference is
+that the `GD32F307` takes a little longer to boot (the Flash content must be
+copied to RAM on boot), and the device can run faster.
 
 For now, here's the OpenOCD command that works with my JLink probe
 

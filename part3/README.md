@@ -77,8 +77,10 @@ cortex-m-semihosting = { path = '../cortex-m/cortex-m-semihosting' }
 cortex-m = { path = '../cortex-m' }
 ```
 
-This instructs cargo to use my version of `cortex-m`, even for dependencies that use
-`cortex-m`, like `gd32f3`.
+This instructs cargo to use my version of `cortex-m`, ~~even for dependencies that use
+`cortex-m`, like `gd32f3`.~~ Actually it doesn't override the dependencies of
+our dependencies, and so it's not really that useful. See [github
+issue](https://github.com/rust-lang/cargo/issues/5640).
 
 When we run the following code on the device:
 ```rust
@@ -102,4 +104,153 @@ We see the `hello_world.bin` file appear on the host (created by OpenOCD):
 Great! Now we know how to send a file from the device to the host. We are left
 with interfacing the external flash chip.
 
-## Sending files from the device to the host
+## Picking a compatible STM32 device
+
+Now that we need to access and use the SPI on-chip peripheral, we need to use
+some sort of HAL. But it would be a waste of time to re-implement the HAL.
+Perhaps we can reuse one of the SMT32 HAL.
+
+There's 86 SMT32 device supported with Rust embedded, with all kind of different
+register layouts. Our device has ~10,000 register and bit definitions, so it's
+not an easy task to match an SMT32 device that we can use as they are all a bit
+of a mix of various versions of peripherals.
+
+I found effective to compare the textual representation of the memory register
+layout of the `GD32F307` with other STM32s using `svd mmap`. I decided to focus
+primarily on the peripheral of interest, namely the `GPIO` ports, `SPI`, and
+clock configuration registers.  After manually going through all the devices,
+I eventually found a pretty good match, the `SMT32F107` even though it's a
+Cortex-M3, and not a Cortex-M4 like the `GD32F307`. It would be tempting to look
+at the `SMT32F4xx` family (Cortex-M4), but no, these have complete different
+register layouts.
+
+![mmap1](mmap1.png)
+
+![mmap2](mmap2.png)
+
+Note that because the `GD32` can go faster than the `STM32` with their
+trickeries as seen in Part 2, there are additional fields to configure the
+GD32 clock, while remaining backward compatible with the `STM32` register
+layout. The `GD32` can run up to 120Mhz, while the `SMT32` can only go to
+72Mhz, and so it needs larger clock multipliers.
+
+We can use the `stm32f1xx-hal` and `stm32f1` crates! Wonderful! This is a big
+relief! We add the following in our `Cargo.toml` file, and delete the `gd32-rs`
+project. Yay!
+
+```toml
+[dependencies.stm32f1xx-hal]
+version = "0.6.1"
+features = ["rt", "stm32f107", "medium"]
+```
+
+## Accessing the flash chip
+
+Because we are using all these nice HAL features, we can actually use an
+off-the-shelf [SPI memory library](https://github.com/jonas-schievink/spi-memory/).
+
+We write our code according to the [example provided by the
+library](https://github.com/jonas-schievink/spi-memory/blob/master/examples/dump.rs),
+and let the IDE fix and autocomplete whatever it needs.
+Note that if we misconfigure the I/O pins (output instead of input for example),
+the code doesn't compile. Super nice!
+
+```rust
+fn main() -> ! {
+    // Initialize the device to run at 48Mhz using the 8Mhz crystal on
+    // the PCB instead of the internal oscillator.
+    let dp = Peripherals::take().unwrap();
+    let mut rcc = dp.RCC.constrain();
+    let mut flash = dp.FLASH.constrain();
+    let clocks = rcc.cfgr
+        .use_hse(8.mhz())
+        .sysclk(48.mhz())
+        .freeze(&mut flash.acr);
+
+    let mut gpiob = dp.GPIOB.split(&mut rcc.apb2);
+
+    // The example in the spi-memory library uses a CS GPIO
+    // We have one, great!
+    let cs = gpiob.pb12.into_push_pull_output(&mut gpiob.crh);
+
+    // The SPI module
+    let spi = {
+        let sck = gpiob.pb13.into_alternate_push_pull(&mut gpiob.crh);
+        let miso = gpiob.pb14.into_floating_input(&mut gpiob.crh);
+        let mosi = gpiob.pb15.into_alternate_push_pull(&mut gpiob.crh);
+
+        spi::Spi::spi2(
+            dp.SPI2,
+            (sck, miso, mosi),
+            // For the SPI mode, I just picked the first option.
+            spi::Mode { polarity: spi::Polarity::IdleLow, phase: spi::Phase::CaptureOnFirstTransition },
+            clocks.pclk1(), // Run as fast as we can. The flash chip can go up to 133Mhz.
+            clocks,
+            &mut rcc.apb1,
+        )
+    };
+
+    // Initialize the spi-memory library
+    let mut flash = Flash::init(spi, cs).unwrap();
+
+    // And read the chip JEDEC ID. In the datasheet, the first byte should be
+    // 0xEF, which corresponds to Winbond
+    let id = flash.read_jedec_id().unwrap();
+    hprintln!("id={:?}", id).unwrap();
+
+    loop {}
+}
+```
+
+Once it compiles, we try to run the program. It should print the flash device
+ID.
+
+```
+» cargo run
+...
+id=Identification([ef, 40, 18])
+```
+
+OMG! wat! It just worked?! Using the `stm32f107` was a good guess! And Rust
+compiler prevented me from making mistakes. I originally had the
+`miso`/`gpiob.pb14` configured as alternate push/pull, but that didn't compile,
+so I switched to a floating input (which kind of makes sense), and the code
+compiled.
+
+## Dumping the external flash
+
+We use the `spi-memory` dump.rs example and incorporate our semihosting file
+transfer situation. We are dumping a 16MB flash chip, and will be using a 32KB
+buffer to do the transfers from the flash chip to the host.
+
+```rust
+const FLASH_SIZE: u32 = 16*1024*1024; // 16MB
+const BUFFER_SIZE: usize = 32*1024; // 32KB
+let mut buf = [0; BUFFER_SIZE];
+
+let mut file = hio::open("ext.bin\0", open::RW_TRUNC_BINARY).unwrap();
+
+for addr in (0..FLASH_SIZE).step_by(BUFFER_SIZE) {
+    flash.read(addr, &mut buf).unwrap();
+    file.write_all(&buf).unwrap();
+}
+```
+
+The file appears on the host, and the external flash ROM is being downloaded at
+a speed of 30KB/s. It takes 10 mins to download the whole flash. It's pretty
+slow, but that's fine, this is a one time thing. The bottleneck is the debugging
+wire / protocol.
+
+The best part is that it just works!
+
+In case you are wondering, I'm measuring the download speed with:
+
+```
+tail -f ext.bin | pv > /dev/null
+13.2MiB 0:08:40 [33.5KiB/s]
+```
+
+And there we have it, the content of the external flash. You can find it in
+[../firmware](../firmware).
+
+In the [next part](../part4/README.md), we'll be looking at what it contains!
