@@ -129,7 +129,7 @@ register layouts.
 ![mmap2](mmap2.png)
 
 Note that because the `GD32` can go faster than the `STM32` with their
-trickeries as seen in the [previous part](/part3/README.md#openocd--gdb-configuration),
+trickeries as seen in the [previous part](../part3/README.md#openocd--gdb-configuration),
 there are additional fields to configure the GD32 clock, while remaining
 backward compatible with the `STM32` register layout. The `GD32` can run up to
 120Mhz, while the `SMT32` can only go to 72Mhz, and so it needs larger clock
@@ -204,7 +204,8 @@ fn main() -> ! {
 ```
 
 Once it compiles, we try to run the program. It should print the flash device
-ID.
+ID.  We should see the first byte as `ef` (corresponding to Winbond, it says so
+in the datasheet). The others bytes, I don't know what they mean.
 
 ```
 » cargo run
@@ -212,7 +213,7 @@ ID.
 id=Identification([ef, 40, 18])
 ```
 
-OMG! wat! It just worked?! Using the `stm32f107` was a good guess! And Rust
+OMG! wat! It just worked?!  Using the `stm32f107` was a good guess! And Rust
 compiler prevented me from making mistakes. I originally had the
 `miso`/`gpiob.pb14` configured as alternate push/pull, but that didn't compile,
 so I switched to a floating input (which kind of makes sense), and the code
@@ -222,7 +223,8 @@ compiled.
 
 We use the `spi-memory` dump.rs example and incorporate our semihosting file
 transfer situation. We are dumping a 16MB flash chip, and will be using a 32KB
-buffer to do the transfers from the flash chip to the host.
+buffer to do the data transfers from the flash to the host. We can't use much,
+we only have 96KB of RAM.
 
 ```rust
 const FLASH_SIZE: u32 = 16*1024*1024; // 16MB
@@ -256,4 +258,4 @@ And there we have it, the content of the external flash. You can find it in
 
 Next, we are going to examine this content.
 
-[Go to Part 5](/part5/README.md)
+[Go to Part 5](../part5/README.md)

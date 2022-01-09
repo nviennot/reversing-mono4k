@@ -259,4 +259,4 @@ our changes.
 
 Next, we'll try to access the external flash on the board.
 
-[Go to Part 2](/part2/README.md)
+[Go to Part 2](../part2/README.md)

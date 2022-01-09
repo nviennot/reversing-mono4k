@@ -307,4 +307,4 @@ The source code of the rust firmware can be found in [/src](/src).
 
 Next, we'll be dumping the content of the flash chip.
 
-[Go to Part 4](/part4/README.md)
+[Go to Part 4](../part4/README.md)

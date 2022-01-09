@@ -1,1 +1,1 @@
-[Go to Part 1](../part1/README.md)
+[Go to Part 1](/writeup/part1/README.md)

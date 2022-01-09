@@ -192,4 +192,4 @@ specify what pins should be used by the flash driver?
 
 It's time to dip our feet in the water and write some code that runs on the MCU
 
-[Go to Part 3](/part3/README.md)
+[Go to Part 3](../part3/README.md)
