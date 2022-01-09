@@ -1,7 +1,9 @@
 Part 4: Dumping the content of the external flash
 =================================================
 
-There's two things we need to accomplish:
+In the [previous part](../part3/README.md) we figured out how to compile and run
+some code on the MCU. Now, there two things we need to accomplish in order to
+extract the ROM from the external flash and save it to the host:
 * Send large amount of bytes from the device to the host, as we
   are planning to dump 32MB of flash after all. We'll do this with the
   semihosting features.

@@ -1,6 +1,10 @@
 Part 3: Creating a Rust development environment
 ===============================================
 
+In the [previous part](../part2/README.md), if we don't want to desolder the
+flash chip, or add a flash reader directly to the board, we are going to have to
+write some code and run it on the MCU.
+
 ## Introduction
 
 [The Rust embedded book](https://docs.rust-embedded.org/book/) tells us a little

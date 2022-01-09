@@ -1,6 +1,8 @@
 Part 2: Planning the read of the external flash
 ==============================================
 
+In the [previous part](../part1/README.md), we discovered the hardware.
+
 ## Discovering the MCU and external flash wiring
 
 We'd like to start running some code on the MCU. Let's pick a simple task.
