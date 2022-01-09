@@ -1,256 +1,310 @@
-Dumping the external flash
-==========================
+Part 3: Creating a Rust development environment
+===============================================
 
-There's two things we need to accomplish:
-* Send large amount of bytes from the device to the host, as we
-  are planning to dump 32MB of flash after all. We'll do this with the
-  semihosting features.
-* Read the SPI flash. Hopefully we can find some already written code to do
-  that.
+## Introduction
 
-## Sending files from the device to the host
+[The Rust embedded book](https://docs.rust-embedded.org/book/) tells us a little
+bit what kind of code structure is expected:
+* First, we have a device crate (a crate is a Rust dependency). It defines where
+  the peripheral registers are located, provides meaning to all the register
+  bits, including which ones are read-only, write-only, etc. It's a bit like the
+  transcription of the device family user manual into code.
+  You can see [the device crates](https://github.com/rust-embedded/awesome-embedded-rust#peripheral-access-crates).
+* Second, we have a Hardware Abstraction Layer (HAL). This is meant to abstract
+  away the details of the device registers to provide a generic API. It's useful
+  for various reasons. Once we write our code against this HAL API, we get the
+  ability to swap devices easily without having to rewrite our code. Making our
+  firmware compatible with other boards will be easier. Another reason is to
+  provide safety in the use of the device resources. For example, once a pin is
+  configured as an input, it cannot be misused as an output.
+  You can see the [HAL crates](https://github.com/rust-embedded/awesome-embedded-rust#hal-implementation-crates)
+* Third, we can have device drivers controlling various on-board peripherals.
+  For example, a stepper motor driver, or a SPI flash driver. These would be
+  useful for our use-case. You can see some of these
+  [drivers](https://github.com/rust-embedded/awesome-embedded-rust#driver-crates)
+* Lastly, our application code that glues everything together. We may or may
+  not use a real-time operating system. We'll see.
 
-ARM defines semihosting operations meant for a device to communicate with a
-host runnign a debugger. See [What is
-semihosting?](https://developer.arm.com/documentation/dui0471/i/semihosting/what-is-semihosting-?lang=en)
+### The bad news
 
-In a nutshell, the device invokes a system call (via the `BKPT 0xAB` instruction
-on the Cortex-M4). This traps the debugger. The register `r0` contains the
-system call number, and `r1` contains a pointer to the system call arguments.
+There's no support for the GD32F307 chip. We're going to have to create the
+support.
 
-The system calls are the classic `SYS_OPEN`, `SYS_WRITE`, etc. The list of
-system call can be found
-[here](https://developer.arm.com/documentation/dui0471/i/semihosting/semihosting-operations?lang=en).
-We can look at the documentation of
-[`SYS_OPEN`](https://developer.arm.com/documentation/dui0471/i/semihosting/sys-open--0x01-?lang=en)
-or
-[`SYS_WRITE`](https://developer.arm.com/documentation/dui0471/i/semihosting/sys-write--0x05-?lang=en).
+### The good news
 
-> SYS_WRITE (0x05)
-> 
-> Writes the contents of a buffer to a specified file at the current file position.
-> Perform the file operation as a single action whenever possible. For example,
-> do not split a write of 16KB into four 4KB chunks unless there is no
-> alternative.
-> 
-> On entry, R1 contains a pointer to a three-word data block:
-> * word 1: contains a handle for a file previously opened with SYS_OPEN
-> * word 2: points to the memory containing the data to be written
-> * word 3: contains the number of bytes to be written from the buffer to the file.
-> 
-> On exit, R0 contains:
-> * 0 if the call is successful
-> * the number of bytes that are not written, if there is an error.
+We can automate the creation of the device crate via SVD files, which I'll get
+to in a bit. Also, the STM32 chip family registers resembles to the ones in our
+chip, so hopefully we can copy/paste a bunch of code from the HAL layer if
+the hardware designers didn't get too creative in implementing peripherals. Bugs
+are expected, and long debugging sessions are coming, no doubt.
 
-This is very similar to a hypervisor call if the device was running in a virtual
-machine. Except that here, the host is attached via a debugging probe.
+There's a device create for our device family
+[`gd32-rs`](https://github.com/qwandor/gd32-rs), and a
+[`gd32f1x0-hal`](https://github.com/qwandor/gd32f1x0-hal) crate. These are good
+starting points.
 
-Note that invoking a system call pauses the device execution, and thus is not
-appropriate for real-time executions as the invokation will be slow (100's of
-millisecs).
+## Creating the device crate
 
-Another approach to logging is to use [Instrumentation Trace Macrocell
-(ITM)](https://developer.arm.com/documentation/ddi0489/f/instrumentation-trace-macrocell-unit),
-which is little more involved to setup compared to semihosting as it turns one
-of the device pin as an asynchronous serial port, so we'd have to setup the
-clock of the device and properly synchronize the device and the host data rates.
-The nice thing about semihosting is the richness of the API via the various
-system calls. It's not just for logging.
+Manufacturers provide support for various development environments. To make
+things easier, vendors typically provide a SVD file (System View Description)
+that formally describes the hardware. The detail contained in system view
+descriptions is comparable to the data in device reference manuals.  The
+information ranges from high level functional descriptions of a peripheral all
+the way down to the definition and purpose of an individual bit field in a
+memory mapped register.
 
-The `cortex-m-semihostring` crate does not expose any API to create files on the
-host, even though it seems that we could use the `SYS_OPEN` system call as
-OpenOCD implements it well. See its
-[implementation](https://github.com/openocd-org/openocd/blob/aad87180586a43500f8af1cf79255c7293bb258b/src/target/semihosting_common.c#L633).
-It also implements all the other system call pretty well.
+On the [download page of gd32mcu.com](http://www.gd32mcu.com/en/download),
+we can find `GD32F30x Firmware Library`. In there, we can find files for the arm
+Keil IDE to support the GD32F30x family of product.  There's one file called
+`GigaDevice.GD32F30x_DFP.2.1.0.pack` which is a zipfile.
 
-We can add the feature to the `cortex-m-semihosting` crate to export the
-`open()` call. See [my pull
-request](https://github.com/rust-embedded/cortex-m/pull/387). Hopefully it gets
-merged.
+Devices are described in `GigaDevice.GD32F30x_DFP.pdsc`. This file describes the
+flash/memory layout for each device, as well as the corresponding SVD file.
+Here's an extract from `GD32F30x_CL.svd`. It's a fairly verbose XML file
+weighing a whooping 1.3MB.
 
-Because I am now using my own local copy of the `cortex-m` repository, I add
-the following in the `Cargo.toml` file:
-
-```
-[patch.crates-io]
-cortex-m-semihosting = { path = '../cortex-m/cortex-m-semihosting' }
-cortex-m = { path = '../cortex-m' }
-```
-
-This instructs cargo to use my version of `cortex-m`, ~~even for dependencies that use
-`cortex-m`, like `gd32f3`.~~ Actually it doesn't override the dependencies of
-our dependencies, and so it's not really that useful. See [github
-issue](https://github.com/rust-lang/cargo/issues/5640).
-
-When we run the following code on the device:
-```rust
-#[entry]
-fn main() -> ! {
-    use cortex_m_semihosting::{hio::open, nr};
-    let mut file = open("hello_world.bin\0", nr::open::RW_TRUNC_BINARY).unwrap();
-    file.write_all(b"We can send binaries").unwrap();
-    loop {}
-}
-```
-
-We see the `hello_world.bin` file appear on the host (created by OpenOCD):
-
-```
-» hexdump -C hello_world.bin
-00000000  57 65 20 63 61 6e 20 73  65 6e 64 20 62 69 6e 61  |We can send bina|
-00000010  72 69 65 73                                       |ries|
+```xml
+...
+<peripheral>
+  <name>GPIOA</name>
+  <description>General-purpose I/Os</description>
+  <groupName>GPIO</groupName>
+  <baseAddress>0x40010800</baseAddress>
+  <addressBlock>
+    <offset>0x0</offset>
+    <size>0x400</size>
+    <usage>registers</usage>
+  </addressBlock>
+  <registers>
+    <register>
+      <name>CTL0</name>
+      <displayName>CTL0</displayName>
+      <description>port control register 0</description>
+      <addressOffset>0x0</addressOffset>
+      <size>0x20</size>
+      <access>read-write</access>
+      <resetValue>0x44444444</resetValue>
+      <fields>
+        <field>
+          <name>CTL7</name>
+          <description>Port x configuration bits (x=7)</description>
+          <bitOffset>30</bitOffset>
+          <bitWidth>2</bitWidth>
+        </field>
+        <field> <name>MD7</name>
+          <description>Port x mode bits (x=7)</description>
+          <bitOffset>28</bitOffset>
+          <bitWidth>2</bitWidth>
+        </field>
+...
 ```
 
-Great! Now we know how to send a file from the device to the host. We are left
-with interfacing the external flash chip.
+It is customary to use the vendor provided SVD file to generate the device crate
+using [`svd2rust`](https://github.com/rust-embedded/svd2rust). I can add the
+support for our device in the `gd32-rs` crate. Here's the
+[commit](https://github.com/nviennot/gd32-rs/commit/a525c52ecd127031c014370a5b3de138dd255cb6).
+I'll make a pull-request later once I test this thing a little.
 
-## Picking a compatible STM32 device
+## Bootstrapping the Rust firmware source code
 
-Now that we need to access and use the SPI on-chip peripheral, we need to use
-some sort of HAL. But it would be a waste of time to re-implement the HAL.
-Perhaps we can reuse one of the SMT32 HAL.
+[The Rust embedded book](https://docs.rust-embedded.org/book/) points to the
+[`cortex-m-quickstart`](https://github.com/rust-embedded/cortex-m-quickstart)
+repository which I'm going to use as a template for this project.
 
-There's 86 SMT32 device supported with Rust embedded, with all kind of different
-register layouts. Our device has ~10,000 register and bit definitions, so it's
-not an easy task to match an SMT32 device that we can use as they are all a bit
-of a mix of various versions of peripherals.
+There are a couple of steps that are different from a regular Rust project.
 
-I found effective to compare the textual representation of the memory register
-layout of the `GD32F307` with other STM32s using `svd mmap`. I decided to focus
-primarily on the peripheral of interest, namely the `GPIO` ports, `SPI`, and
-clock configuration registers.  After manually going through all the devices,
-I eventually found a pretty good match, the `SMT32F107` even though it's a
-Cortex-M3, and not a Cortex-M4 like the `GD32F307`. It would be tempting to look
-at the `SMT32F4xx` family (Cortex-M4), but no, these have complete different
-register layouts.
+### Installing the target toolchain
 
-![mmap1](mmap1.png)
+We are told to install the toolchain and helpful tools, no problem.
 
-![mmap2](mmap2.png)
+```
+rustup target add thumbv7em-none-eabihf
+rustup component add llvm-tools-preview
+cargo install cargo-binutils
+cargo install cargo-generate
+brew install armmbed/formulae/arm-none-eabi-gcc
+brew install qemu
+```
 
-Note that because the `GD32` can go faster than the `STM32` with their
-trickeries as seen in Part 2, there are additional fields to configure the
-GD32 clock, while remaining backward compatible with the `STM32` register
-layout. The `GD32` can run up to 120Mhz, while the `SMT32` can only go to
-72Mhz, and so it needs larger clock multipliers.
+Here, I'm using the brew package manager, but the Rust book has you covered if you are
+using Linux or Windows.
 
-We can use the `stm32f1xx-hal` and `stm32f1` crates! Wonderful! This is a big
-relief! We add the following in our `Cargo.toml` file, and delete the `gd32-rs`
-project. Yay!
+QEMU is not really needed, it could be nice to run the firmware emulated on the
+computer. This might not work well as there's not really a good emulator for our
+specific chip.
+
+### `Cargo.toml` dependencies
+
+We must configure the project dependencies via `Cargo.toml`. Here's what I've
+got so far:
 
 ```toml
-[dependencies.stm32f1xx-hal]
-version = "0.6.1"
-features = ["rt", "stm32f107", "medium"]
+[dependencies]
+cortex-m = "0.7"
+cortex-m-rt = "0.7"
+cortex-m-semihosting = "0.3"
+panic-semihosting = "0.5"
+panic-halt = "0.2"
+gd32f3 = { path = "../gd32-rs/gd32f3", features = ["gd32f307", "rt"]}
 ```
 
-## Accessing the flash chip
+We have no HAL at this point, but this is enough to get us started. the `rt`
+feature means that we want access to interrupts. It will be useful for later.
+Also note that I'm overriding `path` of the dependency `gd32f3` as I'm working
+with a local copy.
 
-Because we are using all these nice HAL features, we can actually use an
-off-the-shelf [SPI memory library](https://github.com/jonas-schievink/spi-memory/).
+The `cortex-m-*` crates provides access to CPU configuration registers. The
+`panic` crates provides behavior for what to do when our program panics.
+The `semihosting` crates are for the MCU to communicate with a host via a debug
+channel (here OpenOCD + GDB), we'll get to it.
 
-We write our code according to the [example provided by the
-library](https://github.com/jonas-schievink/spi-memory/blob/master/examples/dump.rs),
-and let the IDE fix and autocomplete whatever it needs.
-Note that if we misconfigure the I/O pins (output instead of input for example),
-the code doesn't compile. Super nice!
+### Memory layout
+
+Next, we configure our device memory layout in `memory.x`.
+The flash on the GD32F307 is 512K, in two different banks of 256KB.  The first
+bank has pages of 2KB, and the second bank 4KB.  There are delays when the CPU
+executes instructions from the second bank.  Let's ignore the second bank for
+now. The values here are found in the datasheet of the device.
+
+```
+MEMORY
+{
+  FLASH : ORIGIN = 0x08000000, LENGTH = 256K
+  RAM : ORIGIN = 0x20000000, LENGTH = 96K
+}
+```
+
+It's fairly straight forward, I like it!
+
+### Cargo configuration
+
+In `.cargo/config.toml`, we specify what `cargo run` does. We want to flash the
+target, and run the program.
+
+```
+[target.'cfg(all(target_arch = "arm", target_os = "none"))']
+runner = "arm-none-eabi-gdb -q -x openocd.gdb"
+
+[build]
+target = "thumbv7em-none-eabihf" # Cortex-M4F and Cortex-M7F (with FPU)
+```
+
+Here we use gdb with an init script `openocd.gdb` for `cargo run`, and tell the
+compiler to target a Cortex-M4 with a floating point unit.
+
+### OpenOCD + gdb configuration
+
+OpenOCD doesn't have official support for the `GD32F307`, and we need a way to
+flash our soon to be compiled program in the internal flash of the chip.
+
+It turns out that the `GD32F307` flash driver behaves the same way as the `STM32F1X`
+device families. (Same register addresses). It appears that the `GD32` product
+line is a clone of the `STM32` product line. See this
+[hackaday article](https://hackaday.com/2020/10/22/stm32-clones-the-good-the-bad-and-the-ugly/)
+and this [GD32 decap](https://zeptobars.com/en/read/GD32F103CBT6-mcm-serial-flash-Giga-Devices).
+This could make our lives easier as we can copy/paste parts of the STM32 driver
+code. It's not an exact copy. Figuring out what are the differences will most likely
+be tedious.
+
+![gd32_decap](gd32_decap.jpg)
+Photo from [zeptobars](https://zeptobars.com/en/read/GD32F103CBT6-mcm-serial-flash-Giga-Devices)
+
+Look at these animals. This chip is a huge hack (the same could be said for
+any useful system). But hey, it works fine apparently. A notable difference is
+that the `GD32F307` takes a little longer to boot (the Flash content must be
+copied to RAM on boot), and the device can run faster.
+
+For now, here's the OpenOCD command that works with my JLink probe
+
+```
+# Using the Jlink adapter in SWD mode (not JTAG), and pretend we are talking to
+# a STM32F1X device. That target file comes with openocd.
+openocd -c 'adapter driver jlink; transport select swd' -f target/stm32f1x.cfg
+
+Info : Listening on port 6666 for tcl connections
+Info : Listening on port 4444 for telnet connections
+Info : J-Link V10 compiled Nov  2 2021 12:14:50
+Info : Hardware version: 10.10
+Info : VTarget = 3.300 V
+Info : clock speed 1000 kHz
+Info : SWD DPIDR 0x2ba01477
+Info : stm32f1x.cpu: hardware has 6 breakpoints, 4 watchpoints
+Info : starting gdb server for stm32f1x.cpu on 3333
+Info : Listening on port 3333 for gdb connections
+```
+
+The final part is to plug `gdb` to `openocd`. Here's its configuration file:
+
+```
+# Connect to OpenOCD
+target extended-remote :3333
+
+# Enable OpenOCD's semihosting capability
+monitor arm semihosting enable
+monitor arm semihosting_fileio enable
+
+# Set backtrace limit to not have infinite backtrace loops
+set backtrace limit 32
+
+# Print demangled symbols
+set print asm-demangle on
+
+# Print 5 instructions every time we break.
+# Note that `layout asm` is also pretty good, but my up arrow doesn't work
+# anymore in this mode, so I prefer display/5i.
+display/5i $pc
+
+# Write our program into the device's internal flash
+load
+
+# Resume execution
+continue
+```
+
+GDB is the one loading the ELF file produced by `cargo build`, and directing
+`OpenOCD` to write its content to the correct location via the `load` command.
+
+
+### `src/main.rs`
+
+Our hello world  program:
+
 
 ```rust
+#![no_std]
+#![no_main]
+
+use panic_semihosting as _; // logs messages to the host stderr; requires a debugger
+
+use cortex_m_rt::entry;
+use cortex_m_semihosting::hprintln;
+
+use gd32f3::gd32f307;
+
+#[entry]
 fn main() -> ! {
-    // Initialize the device to run at 48Mhz using the 8Mhz crystal on
-    // the PCB instead of the internal oscillator.
-    let dp = Peripherals::take().unwrap();
-    let mut rcc = dp.RCC.constrain();
-    let mut flash = dp.FLASH.constrain();
-    let clocks = rcc.cfgr
-        .use_hse(8.mhz())
-        .sysclk(48.mhz())
-        .freeze(&mut flash.acr);
-
-    let mut gpiob = dp.GPIOB.split(&mut rcc.apb2);
-
-    // The example in the spi-memory library uses a CS GPIO
-    // We have one, great!
-    let cs = gpiob.pb12.into_push_pull_output(&mut gpiob.crh);
-
-    // The SPI module
-    let spi = {
-        let sck = gpiob.pb13.into_alternate_push_pull(&mut gpiob.crh);
-        let miso = gpiob.pb14.into_floating_input(&mut gpiob.crh);
-        let mosi = gpiob.pb15.into_alternate_push_pull(&mut gpiob.crh);
-
-        spi::Spi::spi2(
-            dp.SPI2,
-            (sck, miso, mosi),
-            // For the SPI mode, I just picked the first option.
-            spi::Mode { polarity: spi::Polarity::IdleLow, phase: spi::Phase::CaptureOnFirstTransition },
-            clocks.pclk1(), // Run as fast as we can. The flash chip can go up to 133Mhz.
-            clocks,
-            &mut rcc.apb1,
-        )
-    };
-
-    // Initialize the spi-memory library
-    let mut flash = Flash::init(spi, cs).unwrap();
-
-    // And read the chip JEDEC ID. In the datasheet, the first byte should be
-    // 0xEF, which corresponds to Winbond
-    let id = flash.read_jedec_id().unwrap();
-    hprintln!("id={:?}", id).unwrap();
-
-    loop {}
+    hprintln!("Hello, world!");
+    panic!("We are done!");
 }
 ```
 
-Once it compiles, we try to run the program. It should print the flash device
-ID.
+When we do `cargo run`, here's what we get:
 
-```
-» cargo run
-...
-id=Identification([ef, 40, 18])
-```
+![cargo_run](cargo_run.png)
 
-OMG! wat! It just worked?! Using the `stm32f107` was a good guess! And Rust
-compiler prevented me from making mistakes. I originally had the
-`miso`/`gpiob.pb14` configured as alternate push/pull, but that didn't compile,
-so I switched to a floating input (which kind of makes sense), and the code
-compiled.
+And there we have it. We are running our own code on the Mono 4K's controller
+board. This took me a while to get right. I originally had a mistake in
+`memory.x`, and nothing was getting written to the flash.
 
-## Dumping the external flash
+We can use `hprintln!()` to show messages on our terminal like a `printf()`
+statement, and when the program panics, we get a message, nice. This is using
+the semihosting features of the Arm CPU which are essentially system calls
+issued to the host (the debugger). We'll dive into these facilities in the next
+part to see how we can use this to send a large binary (like the external
+flash that we are after).
 
-We use the `spi-memory` dump.rs example and incorporate our semihosting file
-transfer situation. We are dumping a 16MB flash chip, and will be using a 32KB
-buffer to do the transfers from the flash chip to the host.
+The source code of the rust firmware can be found in [/src](/src).
 
-```rust
-const FLASH_SIZE: u32 = 16*1024*1024; // 16MB
-const BUFFER_SIZE: usize = 32*1024; // 32KB
-let mut buf = [0; BUFFER_SIZE];
+Next, we'll be dumping the content of the flash chip.
 
-let mut file = hio::open("ext.bin\0", open::RW_TRUNC_BINARY).unwrap();
-
-for addr in (0..FLASH_SIZE).step_by(BUFFER_SIZE) {
-    flash.read(addr, &mut buf).unwrap();
-    file.write_all(&buf).unwrap();
-}
-```
-
-The file appears on the host, and the external flash ROM is being downloaded at
-a speed of 30KB/s. It takes 10 mins to download the whole flash. It's pretty
-slow, but that's fine, this is a one time thing. The bottleneck is the debugging
-wire / protocol.
-
-The best part is that it just works!
-
-In case you are wondering, I'm measuring the download speed with:
-
-```
-tail -f ext.bin | pv > /dev/null
-13.2MiB 0:08:40 [33.5KiB/s]
-```
-
-And there we have it, the content of the external flash. You can find it in
-[../firmware](../firmware).
-
-In the [next part](../part4/README.md), we'll be looking at what it contains!
+[Go to Part 4](/part4/README.md)

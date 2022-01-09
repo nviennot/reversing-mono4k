@@ -3,10 +3,10 @@ Reverse engineering the Anycubic Mono 4K
 
 ## Table of content
 
-* [Part 0: Discovery of the hardware and firmware extraction](part0/README.md)
-* [Part 1: Planning to read the external flash](part1/README.md)
-* [Part 2: Creating a Rust development environment](part2/README.md)
-* [Part 3: Dumping the external flash](part3/README.md)
+* [Part 1: Discovery of the hardware and firmware extraction](part1/README.md)
+* [Part 2: Planning the read of the external flash](part2/README.md)
+* [Part 3: Creating a Rust development environment](part3/README.md)
+* [Part 4: Dumping content of the external flash](part4/README.md)
 
 ## Introduction
 
@@ -17,11 +17,11 @@ out.
 
 Here's the printer.
 
-![Anycubic Mono 4K](part0/printer.jpg)
+![Anycubic Mono 4K](part1/printer.jpg)
 
 Here's an example of a printed object.
 
-![Printed Bracket](part0/bracket_print.jpg)
+![Printed Bracket](part1/bracket_print.jpg)
 
 There are visible lines due to the lack of anti-aliasing support on the printer.
 Its LCD screen outputs only fully transparent, or fully opaque pixels, no gray-scale.
@@ -43,10 +43,18 @@ Apparently, we have to wait for a firmware update, but I'd rather not wait.
   (USB OTG), and be controlled by a host.
 * Write the new firmware purely in [Rust](https://www.rust-lang.org/what/embedded)!
 
+## Writeup
+
+* [Part 1: Discovery of the hardware and firmware extraction](part1/README.md)
+* [Part 2: Planning the read of the external flash](part2/README.md)
+* [Part 3: Creating a Rust development environment](part3/README.md)
+* [Part 4: Dumping content of the external flash](part4/README.md)
+
 ## Resources
 
-* Datasheets: [datasheet](datasheet) folder
-* Original firmware: [firmware](firmware) folder
-* PCB photos: [pcb](pcb) folder
-* Pin config: [print_ports_config.py](firmware/print_ports_config.py) and [port_config.txt](firmware/port_config.txt)
-* Rust firmware: [src](src) folder
+* Datasheets: [datasheet](/datasheet) folder
+* Original firmware: [firmware](/firmware) folder
+* PCB photos: [pcb](/pcb) folder
+* Pin config: [print_ports_config.py](/firmware/print_ports_config.py) and [port_config.txt](/firmware/port_config.txt)
+* Rust firmware: [src](/src) folder
+

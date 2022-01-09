@@ -1,311 +1,195 @@
-Creating a Rust development environment
-=======================================
+Part 2: Planning the read of the external flash
+==============================================
 
-## Introduction
+## Discovering the MCU and external flash wiring
 
-[The Rust embedded book](https://docs.rust-embedded.org/book/) tells us a little
-bit what kind of code structure is expected:
-* First, we have a device crate (a crate is a Rust dependency). It defines where
-  the peripheral registers are located, provides meaning to all the register
-  bits, including which ones are read-only, write-only, etc. It's a bit like the
-  transcription of the device family user manual into code.
-  You can see the device crates [here](https://github.com/rust-embedded/awesome-embedded-rust#peripheral-access-crates).
-* Second, we have a Hardware Abstraction Layer (HAL). This is meant to abstract
-  away the details of the device registers to provide a generic API. It's useful
-  for various reasons. Once we write our code against this HAL API, we get the
-  ability to swap devices easily without having to rewrite our code. Making our
-  firmware compatible with other boards will be easier. Another reason is to
-  provide safety in the use of the device resources. For example, once a pin is
-  configured as an input, it cannot be misused as an output.
-  You can see the HAL crates [here](https://github.com/rust-embedded/awesome-embedded-rust#hal-implementation-crates)
-* Third, we can have device drivers controlling various on-board peripherals.
-  For example, a stepper motor driver, or a SPI flash driver. These would be
-  useful for our use-case. You can see some of these drivers
-  [here](https://github.com/rust-embedded/awesome-embedded-rust#driver-crates)
-* Lastly, our application code that glues everything together. We may or may
-  not use a real-time operating system. We'll see.
+We'd like to start running some code on the MCU. Let's pick a simple task.
+We could blink an LED on the board, but there's more interesting.
+How about accessing the external flash chip next to the MCU, and read all of its
+content. It should contain the UI graphics of the touch screen, and perhaps the
+FPGA bitstream (the FPGA firmware if you will).
 
-### The bad news
+Referring to the [pcb photos](../pcb), and the [datasheets](../datasheet) of the
+MCU and the flash chip, we can figure out how they talk to each other.
 
-There's no support for the GD32F307 chip. We're going to have to create the
-support.
+![Flash connected to the MCU](pcb.jpg)
 
-### The good news
+We see that the Flash is getting power via `VCC` on the `3.3V` supply. A pull-up
+resistor is connected to `/RESET` to enable the chip. the `GND` pin is connected
+to the ground.
 
-We can automate the creation of the device crate via SVD files, which I'll get
-to in a bit. Also, the STM32 chip family registers resembles to the ones in our
-chip, so hopefully we can copy/paste a bunch of code from the HAL layer if
-the hardware designers didn't get too creative in implementing peripherals. Bugs
-are expected, and long debugging sessions are coming, no doubt.
+We see that the MCU and the flash chip are connected via 4 traces.
 
-There's a device create for our device family
-[`gd32-rs`](https://github.com/qwandor/gd32-rs), and a
-[`gd32f1x0-hal`](https://github.com/qwandor/gd32f1x0-hal) crate. These are good
-starting points.
+ MCU Pin | Flash Pin
+---------|----------
+`PB12`   | `DO` or `/WP` or `/CS`
+`PB13`   | `CLK`
+`PB14`   | `DO` or `/WP` or `/CS`
+`PB15`   | `DI`
 
-## Creating the device crate
+It's not clear where the `PB12` and `PB14` are connected to without desoldering
+the flash chip.
 
-Manufacturers provide support for various development environments. To make
-things easier, vendors typically provide a SVD file (System View Description)
-that formally describes the hardware. The detail contained in system view
-descriptions is comparable to the data in device reference manuals.  The
-information ranges from high level functional descriptions of a peripheral all
-the way down to the definition and purpose of an individual bit field in a
-memory mapped register.
+In the flash chip datasheet, we learn that the chip communicates via the Serial
+Peripheral Interface (SPI). Essentially, data flowing from one chip to another
+is done on a single wire (`DI` or `DO`) and bits are flowing at the rate
+indicated by the `CLK` wire.
 
-On the [download page of gd32mcu.com](http://www.gd32mcu.com/en/download),
-we can find `GD32F30x Firmware Library`. In there, we can find files for the arm
-Keil IDE to support the GD32F30x family of product.  There's one file called
-`GigaDevice.GD32F30x_DFP.2.1.0.pack` which is a zipfile.
+Multiple chips can be connected to the same SPI bus, and so there's a chip
+select wire to select which chip is being talked to. The datasheet indicates
+that the power consumption goes down when the chip select pin is low, so that's
+a good reason to use this wire, even if there's only one chip on the SPI bus.
 
-Devices are described in `GigaDevice.GD32F30x_DFP.pdsc`. This file describes the
-flash/memory layout for each device, as well as the corresponding SVD file.
-Here's an extract from `GD32F30x_CL.svd`. It's a fairly verbose XML file
-weighing a whooping 1.3MB.
+The `/WP` pin (Write Protect) is to turn the chip to read-only mode. I doubt
+that this is actually used, and is probably hard wired to be inactive. But we
+never know, it could actually be popular to use this wire, and not care about
+energy consumption (makes sense, we are not on a battery powered system).
 
-```xml
-...
-<peripheral>
-  <name>GPIOA</name>
-  <description>General-purpose I/Os</description>
-  <groupName>GPIO</groupName>
-  <baseAddress>0x40010800</baseAddress>
-  <addressBlock>
-    <offset>0x0</offset>
-    <size>0x400</size>
-    <usage>registers</usage>
-  </addressBlock>
-  <registers>
-    <register>
-      <name>CTL0</name>
-      <displayName>CTL0</displayName>
-      <description>port control register 0</description>
-      <addressOffset>0x0</addressOffset>
-      <size>0x20</size>
-      <access>read-write</access>
-      <resetValue>0x44444444</resetValue>
-      <fields>
-        <field>
-          <name>CTL7</name>
-          <description>Port x configuration bits (x=7)</description>
-          <bitOffset>30</bitOffset>
-          <bitWidth>2</bitWidth>
-        </field>
-        <field> <name>MD7</name>
-          <description>Port x mode bits (x=7)</description>
-          <bitOffset>28</bitOffset>
-          <bitWidth>2</bitWidth>
-        </field>
-...
-```
+ Flash Pin | Description
+-----------|----------
+`/CS`      | Chip Select Input
+`/WP`      | Write Protect Input
+`CLK`      | Serial Clock Input
+`DI`       | Data Input
+`DO`       | Data Output
 
-It is customary to use the vendor provided SVD file to generate the device crate
-using [`svd2rust`](https://github.com/rust-embedded/svd2rust). I can add the
-support for our device in the `gd32-rs` crate. Here's the
-[commit](https://github.com/nviennot/gd32-rs/commit/a525c52ecd127031c014370a5b3de138dd255cb6).
-I'll make a pull-request later once I test this thing a little.
-One thing that the SVD file doesn't provide is the meaning of the bit values in
-registers. This is done in [the /peripherals](https://github.com/qwandor/gd32-rs/blob/main/peripherals/gpio/gpio.yaml)
-directory of that device crate. It's not necessary for now.
+On the MCU data sheet, we learn the following (page 29):
 
-## Bootstrapping the Rust firmware source code
+MCU Pin | Description
+--------|--------------
+`PB12`  | GPIO, or `SPI1_NSS` (slave select)
+`PB13`  | GPIO, or `SPI1_SCK` (SPI clock output)
+`PB14`  | GPIO, or `SPI1_MISO` (Data reception line)
+`PB15`  | GPIO, or `SPI1_MOSI` (Data transmission line)
 
-[The Rust embedded book](https://docs.rust-embedded.org/book/) points to the
-[`cortex-m-quickstart`](https://github.com/rust-embedded/cortex-m-quickstart)
-repository which I'm going to use as a template for this project.
+We deduct that the MCU and the flash chip is connected in the following way:
 
-There are a couple of steps that are different from a regular Rust project.
+ MCU Pin | Flash Pin
+---------|----------
+`PB12`   | `/CS` or `/WP`
+`PB13`   | `CLK`
+`PB14`   | `DO`
+`PB15`   | `DI`
 
-### Installing the target toolchain
+## Reading the pin configuration of the MCU
 
-We are told to install the toolchain and helpful tools, no problem.
+The MCU adapts for a variety of use-cases. Therefore, they must include a way to
+configure each pin in whatever way the hardware designer wishes.
+These pins are called General Purpose Input/Output (GPIO) pins.
+
+These pins are grouped into packs of 16. We call such group a port, and give it
+a letter. For example, the pin `PB12` is the pin `12` of the port `B`.
+
+Each GPIO port is controlled via special registers such as `CTL0`, `CTL`, `ISTAT`,
+`OCTL`.
+
+The datasheet tells us where these registers are located
+
+Port     | Address
+---------|-------------
+`Port A` | `0x40010800`
+`Port B` | `0x40010C00`
+`Port C` | `0x40011000`
+`Port D` | `0x40011400`
+`Port E` | `0x40011800`
+`Port F` | `0x40011C00`
+`Port G` | `0x40012000`
+
+With the J-Link probe, we can read the 4 registers of each of the 7 ports (A-G):
 
 ```
-rustup target add thumbv7em-none-eabihf
-rustup component add llvm-tools-preview
-cargo install cargo-binutils
-cargo install cargo-generate
-brew install armmbed/formulae/arm-none-eabi-gcc
-brew install qemu
+J-Link>Mem32 0x40010800, 4
+40010800 = BBB3B3B3 88844383 0000C615 0000A615
+J-Link>Mem32 0x40010C00, 4
+40010C00 = 33088440 BBB3734B 0000FE0A 00001C18
+J-Link>Mem32 0x40011000, 4
+40011000 = 33444333 44344483 0000FEFF 000022C7
+J-Link>Mem32 0x40011400, 4
+40011400 = B0BB00BB BB43BBBB 0000E7B3 00000080
+J-Link>Mem32 0x40011800, 4
+40011800 = B3334434 BBBBBBBB 0000FF8D 00000000
+J-Link>Mem32 0x40011C00, 4
+40011C00 = 44444444 44444444 00000D94 00000000
+J-Link>Mem32 0x40012000, 4
+40012000 = 44444444 44444444 0000E48A 00000000
 ```
 
-Here, I'm using the brew package manager, but the Rust book has you covered if you are
-using Linux or Windows.
-
-QEMU is not really needed, it could be nice to run the firmware emulated on the
-computer. This might not work well as there's not really a good emulator for our
-specific chip.
-
-### `Cargo.toml` dependencies
-
-We must configure the project dependencies via `Cargo.toml`. Here's what I've
-got so far:
-
-```toml
-[dependencies]
-cortex-m = "0.7"
-cortex-m-rt = "0.7"
-cortex-m-semihosting = "0.3"
-panic-semihosting = "0.5"
-panic-halt = "0.2"
-gd32f3 = { path = "../gd32-rs/gd32f3", features = ["gd32f307", "rt"]}
-```
-
-We have no HAL at this point, but this is enough to get us started. the `rt`
-feature means that we want access to interrupts. It will be useful for later.
-Also note that I'm overriding `path` of the dependency `gd32f3` as I'm working
-with a local copy.
-
-The `cortex-m-*` crates provides access to CPU configuration registers. The
-`panic` crates provides behavior for what to do when our program panics.
-The `semihosting` crates are for the MCU to communicate with a host via a debug
-channel (here OpenOCD + GDB), we'll get to it.
-
-### Memory layout
-
-Next, we configure our device memory layout in `memory.x`.
-The flash on the GD32F307 is 512K, in two different banks of 256KB.  The first
-bank has pages of 2KB, and the second bank 4KB.  There are delays when the CPU
-executes instructions from the second bank.  Let's ignore the second bank for
-now. The values here are found in the datasheet of the device.
+Here's the equivalent OpenOCD commands:
 
 ```
-MEMORY
-{
-  FLASH : ORIGIN = 0x08000000, LENGTH = 256K
-  RAM : ORIGIN = 0x20000000, LENGTH = 96K
-}
+> mdw 0x40010800 4
+0x40010800: bbb3b3b3 88844383 0000c614 0000a614
+
+> mdw 0x40010C00 4
+0x40010c00: 33088440 bbb3734b 0000fe0a 00001c18
+
+> mdw 0x40011000 4
+0x40011000: 33444333 44344483 0000feff 000022c7
+
+> mdw 0x40011400 4
+0x40011400: b0bb00bb bb43bbbb 0000e7b3 00000080
+
+> mdw 0x40011800 4
+0x40011800: b3334434 bbbbbbbb 0000ff8d 00000000
+
+> mdw 0x40011C00 4
+0x40011c00: 44444444 44444444 00000d94 00000000
 ```
 
-It's fairly straight forward, I like it!
+For each pin, the configuration is the following:
 
-### Cargo configuration
+![GPIO configuration](gpio_config.png)
 
-In `.cargo/config.toml`, we specify what `cargo run` does. We want to flash the
-target, and run the program.
+Decoding the meaning of these 4 registers is not obvious, so I wrote a python
+script that you can find at [`firmware/print_port_config.py`](../firmware/print_port_config.py).
+The full pin configuration can be found at [`firmware/port_config.txt`](../firmware/port_config.txt).
 
-```
-[target.'cfg(all(target_arch = "arm", target_os = "none"))']
-runner = "arm-none-eabi-gdb -q -x openocd.gdb"
+We see the 4 pins of interest being configured as such:
 
-[build]
-target = "thumbv7em-none-eabihf" # Cortex-M4F and Cortex-M7F (with FPU)
-```
+Pin    | Config
+-------|------
+`PB12` | Output push-pull v=1 speed=50Mhz
+`PB13` | Alternate output push-pull speed=50Mhz
+`PB14` | Alternate output push-pull speed=50Mhz
+`PB15` | Alternate output push-pull speed=50Mhz
 
-Here we use gdb with an init script `openocd.gdb` for `cargo run`, and tell the
-compiler to target a Cortex-M4 with a floating point unit.
+Alternate output means the pin is no longer controlled directly by the user, but
+rather by an on chip hardware peripheral, such as the SPI module.
 
-### OpenOCD + gdb configuration
+The configuration makes perfect sense. `PB12` could be acting on the chip select pin
+of the flash device. `v=1` means that the chip is not selected (it's an active
+low, meaning that it's active when voltage is low on the pin). It could also be
+connected to `/WP`, in which case it disables the write protection (but that
+would be strange, it should only be configured in this way when we are updating
+the firmware).
 
-OpenOCD doesn't have official support for the `GD32F307`, and we need a way to
-flash our soon to be compiled program in the internal flash of the chip.
+We don't really know if `PB12` is connected to `/CS` (but I say it's very
+likely). We'll figure this out when trying to read the flash content.
 
-It turns out that the `GD32F307` flash driver behaves the same way as the `STM32F1X`
-device families. (Same register addresses). It appears that the `GD32` product
-line is a clone of the `STM32` product line. See this
-[hackaday article](https://hackaday.com/2020/10/22/stm32-clones-the-good-the-bad-and-the-ugly/)
-and this [GD32 decap](https://zeptobars.com/en/read/GD32F103CBT6-mcm-serial-flash-Giga-Devices).
-This could make our lives easier as we can copy/paste parts of the STM32 driver
-code. It's not an exact copy. Figuring out what are the differences will most likely
-be tedious.
+`PB13`, `PB14`, `PB15` are connected to the MCU's `SPI1` module. Good, it should
+be blazing fast, and we won't have to write much code to implement the SPI
+protocol if we needed to.
 
-![gd32_decap](gd32_decap.jpg)
-Photo from [zeptobars](https://zeptobars.com)
+## Reading the external flash content
 
-Look at these animals. This chip is born as a hack (the same could be said for
-any useful system). But hey, it works fine apparently. A notable difference is
-that the `GD32F307` takes a little longer to boot (the Flash content must be
-copied to RAM on boot), and the device can run faster.
+### Using J-Link
 
-For now, here's the OpenOCD command that works with my JLink probe
+We can consider using the Indirect Mode of the J-Link probe (see
+[SEGGER documentation](https://wiki.segger.com/Programming_External_SPI_Flashes)).
+We are told that we'll need a custom RAMCode (code that runs on the MCU) to
+access the external flash, and there's some instructions in the
+[Flashloader documentation](https://wiki.segger.com/Open_Flashloader#Create_a_Flash_Loader) on how to
+create such RAMCode.
 
-```
-# Using the Jlink adapter in SWD mode (not JTAG), and pretend we are talking to
-# a STM32F1X device. That target file comes with openocd.
-openocd -c 'adapter driver jlink; transport select swd' -f target/stm32f1x.cfg
+### Using OpenOCD
 
-Info : Listening on port 6666 for tcl connections
-Info : Listening on port 4444 for telnet connections
-Info : J-Link V10 compiled Nov  2 2021 12:14:50
-Info : Hardware version: 10.10
-Info : VTarget = 3.300 V
-Info : clock speed 1000 kHz
-Info : SWD DPIDR 0x2ba01477
-Info : stm32f1x.cpu: hardware has 6 breakpoints, 4 watchpoints
-Info : starting gdb server for stm32f1x.cpu on 3333
-Info : Listening on port 3333 for gdb connections
-```
+It looks like there's support for external flash as shown at the
+[OpenOCD flash documentation](https://www.openocd.org/doc/html/Flash-Commands.html#index-cfi),
+with the `cfi` flash driver. But the documentation is really bad. How do we even
+specify what pins should be used by the flash driver?
 
-The final part is to plug `gdb` to `openocd`. Here's its configuration file:
+### Writing our own code
 
-```
-# Connect to OpenOCD
-target extended-remote :3333
+It's time to dip our feet in the water and write some code that runs on the MCU
 
-# Enable OpenOCD's semihosting capability
-monitor arm semihosting enable
-monitor arm semihosting_fileio enable
-
-# Set backtrace limit to not have infinite backtrace loops
-set backtrace limit 32
-
-# Print demangled symbols
-set print asm-demangle on
-
-# Print 5 instructions every time we break.
-# Note that `layout asm` is also pretty good, but my up arrow doesn't work
-# anymore in this mode, so I prefer display/5i.
-display/5i $pc
-
-# Write our program into the device's internal flash
-load
-
-# Resume execution
-continue
-```
-
-GDB is the one loading the ELF file produced by `cargo build`, and directing
-`OpenOCD` to write its content to the correct location via the `load` command.
-
-
-### `src/main.rs`
-
-Our hello world  program:
-
-
-```rust
-#![no_std]
-#![no_main]
-
-use panic_semihosting as _; // logs messages to the host stderr; requires a debugger
-
-use cortex_m_rt::entry;
-use cortex_m_semihosting::hprintln;
-
-use gd32f3::gd32f307;
-
-#[entry]
-fn main() -> ! {
-    hprintln!("Hello, world!");
-    panic!("We are done!");
-}
-```
-
-When we do `cargo run`, here's what we get:
-
-![cargo_run](cargo_run.png)
-
-And there we have it. We are running our own code on the Mono 4K's controller
-board. This took me a while to get right. I originally had a mistake in
-`memory.x`, and nothing was getting written to the flash.
-
-We can use `hprintln!()` to show messages on our terminal like a `printf()`
-statement, and when the program panics, we get a message, nice. This is using
-the semihosting features of the Arm CPU which are essentially system calls
-issued to the host (the debugger). We'll dive into these facilities in the next
-part to see how we can use this to send a large binary (like the external
-flash that we are after).
-
-The source code of the rust firmware can be found in [../src](../src).
-
-Go to [part 3](../part3/README.md)
+[Go to Part 3](/part3/README.md)
