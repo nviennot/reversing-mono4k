@@ -167,6 +167,9 @@ montage -background none -label %f ui-* -geometry +5+5 -tile 5x ui.png
 There 15 different UI screens per language (chinese and english). The last image
 is the boot splash image.
 
+Note that each image starts at the offset `i*0x30000` in the ROM, `i` being the
+index of the image.
+
 ## Decoding `chunk-31.bin`
 
 This chunk is the first of the irregular ones. Its file size is `831744`.
@@ -269,10 +272,10 @@ convert -size 480x68 RGB565:chunk-35.bin'[0]' chunk-35.png
 
 ![chunk-34-35.png](chunk-34-35.png)
 
-These images look like junk because there's no `480x320` on this machine. Our
-touchscreen is `320x240`. This could be from an other machine. I'm not sure how
-these leftovers made it on my printer. Maybe the engineers were in a hurry and
-dumped the ROM of the development board used for multiple machines onto the
-production machines.
+These images look like junk because there's no `480x320` display on this
+machine. Our touchscreen resulution is `320x240`. This could be from an other
+machine. I'm not sure how these leftovers made it on my printer. Maybe the
+engineers were in a hurry and dumped the ROM of the development board used for
+multiple machines onto the production machines.
 
 All the individual UI images can be found in [/firmware/ui](/firmware/ui)
