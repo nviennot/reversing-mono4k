@@ -234,7 +234,7 @@ representation.
 ```bash
 convert -size 256x341 -depth 16 GRAY:chunk-33.bin chunk-33.png
 ```
-![Chunk 33](/firmware/ui/chunk-33.png)
+![Chunk 33](chunk-33.png)
 
 This one doesn't appear to contain graphics. It looks like a `(key:u16,
 value:u16)`lookup table. Interestingly, if we find the pair `(key, value)`, we
