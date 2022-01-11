@@ -1,0 +1,96 @@
+PA0 Output push-pull v=1 speed=50Mhz
+PA1 Alternate output push-pull speed=50Mhz
+PA2 Output push-pull v=1 speed=50Mhz
+PA3 Alternate output push-pull speed=50Mhz
+PA4 Output push-pull v=1 speed=50Mhz
+PA5 Alternate output push-pull speed=50Mhz
+PA6 Alternate output push-pull speed=50Mhz
+PA7 Alternate output push-pull speed=50Mhz
+PA8 Output push-pull v=0 speed=50Mhz
+PA9 Input pull-up v=1
+PA10 Output push-pull v=1 speed=50Mhz
+PA11 Input floating v=0
+PA12 Input floating v=0
+PA13 Input pull-up v=1
+PA14 input pull-down v=0
+PA15 Input pull-up v=1
+PB0 Analog input
+PB1 Input floating v=0
+PB2 Input floating v=0
+PB3 Input pull-up v=1
+PB4 Input pull-up v=1
+PB5 Analog input
+PB6 Output push-pull v=0 speed=50Mhz
+PB7 Output push-pull v=0 speed=50Mhz
+PB8 Alternate output push-pull speed=50Mhz
+PB9 Input floating v=0
+PB10 Output push-pull v=1 speed=50Mhz
+PB11 Output open-drain v=1 speed=50Mhz
+PB12 Output push-pull v=1 speed=50Mhz
+PB13 Alternate output push-pull speed=50Mhz
+PB14 Alternate output push-pull speed=50Mhz
+PB15 Alternate output push-pull speed=50Mhz
+PC0 Output push-pull v=1 speed=50Mhz
+PC1 Output push-pull v=1 speed=50Mhz
+PC2 Output push-pull v=1 speed=50Mhz
+PC3 Input floating v=0
+PC4 Input floating v=0
+PC5 Input floating v=0
+PC6 Output push-pull v=1 speed=50Mhz
+PC7 Output push-pull v=1 speed=50Mhz
+PC8 Output push-pull v=0 speed=50Mhz
+PC9 Input pull-up v=1
+PC10 Input floating v=0
+PC11 Input floating v=0
+PC12 Input floating v=0
+PC13 Output push-pull v=1 speed=50Mhz
+PC14 Input floating v=0
+PC15 Input floating v=0
+PD0 Alternate output push-pull speed=50Mhz
+PD1 Alternate output push-pull speed=50Mhz
+PD2 Analog input
+PD3 Analog input
+PD4 Alternate output push-pull speed=50Mhz
+PD5 Alternate output push-pull speed=50Mhz
+PD6 Analog input
+PD7 Alternate output push-pull speed=50Mhz
+PD8 Alternate output push-pull speed=50Mhz
+PD9 Alternate output push-pull speed=50Mhz
+PD10 Alternate output push-pull speed=50Mhz
+PD11 Alternate output push-pull speed=50Mhz
+PD12 Output push-pull v=0 speed=50Mhz
+PD13 Input floating v=0
+PD14 Alternate output push-pull speed=50Mhz
+PD15 Alternate output push-pull speed=50Mhz
+PE0 Input floating v=0
+PE1 Output push-pull v=0 speed=50Mhz
+PE2 Input floating v=0
+PE3 Input floating v=0
+PE4 Output push-pull v=1 speed=50Mhz
+PE5 Output push-pull v=0 speed=50Mhz
+PE6 Output push-pull v=1 speed=50Mhz
+PE7 Alternate output push-pull speed=50Mhz
+PE8 Alternate output push-pull speed=50Mhz
+PE9 Alternate output push-pull speed=50Mhz
+PE10 Alternate output push-pull speed=50Mhz
+PE11 Alternate output push-pull speed=50Mhz
+PE12 Alternate output push-pull speed=50Mhz
+PE13 Alternate output push-pull speed=50Mhz
+PE14 Alternate output push-pull speed=50Mhz
+PE15 Alternate output push-pull speed=50Mhz
+PF0 Input floating v=0
+PF1 Input floating v=0
+PF2 Input floating v=0
+PF3 Input floating v=0
+PF4 Input floating v=0
+PF5 Input floating v=0
+PF6 Input floating v=0
+PF7 Input floating v=0
+PF8 Input floating v=0
+PF9 Input floating v=0
+PF10 Input floating v=0
+PF11 Input floating v=0
+PF12 Input floating v=0
+PF13 Input floating v=0
+PF14 Input floating v=0
+PF15 Input floating v=0
