@@ -7,16 +7,22 @@ version = "0.1.0"
 
 [dependencies]
 embedded-hal = "0.2.3"
-cortex-m = "0.6"
-cortex-m-rt = "0.6"
+cortex-m = "0.7"
+cortex-m-rt = "0.7"
 cortex-m-semihosting = "0.3"
 panic-semihosting = "0.5"
 panic-halt = "0.2"
-#stm32f1 = { version = "0.14", features = ["stm32f101", "rt"]}
-spi-memory = "0.2.0"
+spi-memory = "0.2"
+stm32-fmc = "0.2"
+display-interface = "0.4"
+
+[dependencies.gd32f3]
+path = "../repos/gd32-rs/gd32f3"
+features = ["gd32f307"]
 
 [dependencies.stm32f1xx-hal]
-version = "0.6.1"
+git = "https://github.com/stm32-rs/stm32f1xx-hal.git"
+#version = "0.6.1"
 features = ["rt", "stm32f107", "medium"]
 
 # this lets you use `cargo fix`!
