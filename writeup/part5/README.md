@@ -279,3 +279,7 @@ engineers were in a hurry and dumped the ROM of the development board used for
 multiple machines onto the production machines.
 
 All the individual UI images can be found in [/firmware/ui](/firmware/ui)
+
+Next, we are going to examine to dry to interface with the touch screen.
+
+[Go to Part 6](../part6/README.md)

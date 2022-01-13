@@ -4,7 +4,7 @@ target extended-remote :3333
 
 # Enable OpenOCD's semihosting capability
 monitor arm semihosting enable
-monitor arm semihosting_fileio enable
+#monitor arm semihosting_fileio enable
 
 #monitor semihosting enable
 #monitor semihosting IOClient 3
@@ -62,3 +62,7 @@ continue
 # # # enable ITM port 0
 # # monitor itm port 0 on
 # 
+#
+source ../repos/PyCortexMDebug/scripts/gdb.py
+#svd_load ../repos/stm32-rs/svd/stm32f107.svd
+svd_load ../repos/gd32-rs/svd/gd32f307.svd

@@ -88,14 +88,30 @@ semantics of of the values they are using:
 
 ```c
 bus_latency = 10;
-asyn_data_setuptime = 15;
-asyn_address_holdtime = 8;
-asyn_address_setuptime = 8;
+data_setuptime = 15;
+address_holdtime = 8;
+address_setuptime = 8;
+```
+
+In the main program, this is what is being used:
+
+```c
+bus_latency = 20;
+data_setuptime = 30;
+address_holdtime = 16;
+address_setuptime = 16;
 ```
 
 We can start implementing our code. I found the
 [`stm32-fmc`](https://github.com/stm32-rs/stm32-fmc) crate that does a good
 job at abstracting away the details of `EXMC` register configuration.
+It's used by the [`stm32h7xx-hal`](https://github.com/stm32-rs/stm32h7xx-hal)
+crate. And it has a [driver for an LCD
+display](https://github.com/stm32-rs/stm32f7xx-hal/blob/master/src/fmc_lcd/mod.rs)
+as well. Fabulous!
+
+
+
 
 ## Initializing the TFT display
 

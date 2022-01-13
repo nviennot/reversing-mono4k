@@ -182,7 +182,7 @@ impl Machine {
                 }
             }
 
-            backlight.set_high();
+            //backlight.set_high();
 
             delay.delay_ms(10u8);
             reset.set_high();
@@ -344,7 +344,57 @@ impl Machine {
                     tft_command(0x2C);
                 }
 
-                set_region();
+
+
+                use core::convert::TryInto;
+                use embedded_graphics::{
+                    pixelcolor::{Gray8, GrayColor},
+                    prelude::*,
+                    primitives::{Circle, PrimitiveStyle},
+                };
+                use embedded_graphics::prelude::*;
+                struct Display {}
+                impl embedded_graphics_core::draw_target::DrawTarget for Display {
+                    type Color = embedded_graphics::pixelcolor::Rgb565;
+
+                    type Error = core::convert::Infallible;
+
+                    fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
+                    where
+                        I: IntoIterator<Item = embedded_graphics::Pixel<Self::Color>> {
+                            for Pixel(coord, color) in pixels.into_iter() {
+
+                                if let Ok((x @ 0..=320u32, y @ 0..=240u32)) = coord.try_into() {
+                                    let x = x as u16;
+                                    let y = y as u16;
+
+                                    tft_command(0x2A);
+                                    tft_args(x >> 8);
+                                    tft_args(x & 0xFF);
+                                    tft_args(x >> 8);
+                                    tft_args(x & 0xFF);
+                                    tft_command(0x2B);
+                                    tft_args(y >> 8);
+                                    tft_args(y & 0xFF);
+                                    tft_args(y >> 8);
+                                    tft_args(y & 0xFF);
+                                    tft_command(0x2C);
+                                    tft_args(embedded_graphics::pixelcolor::raw::RawU16::from(color).into_inner());
+                                }
+                            }
+                            Ok(())
+                    }
+                }
+
+                impl OriginDimensions for Display {
+                    fn size(&self) -> Size {
+                        Size::new(320, 240)
+                    }
+                }
+
+
+
+            backlight.set_high();
 
                 use spi_memory::prelude::*;
 
@@ -353,6 +403,7 @@ impl Machine {
 
                 loop {
                     for img_offset in 0..30 {
+                        set_region();
                         for offset in (0..320*240*2).step_by(BUFFER_SIZE) {
                             ext_flash.0.read(img_offset*0x30000 + offset as u32, &mut buf).unwrap();
                             for i in 0..BUFFER_SIZE/2 {
@@ -360,7 +411,60 @@ impl Machine {
                             }
                         }
 
-                        delay.delay_ms(1000u32);
+                        {
+
+                            let mut display = Display{};
+
+                            use embedded_graphics::{
+                                mono_font::{ascii::FONT_9X18_BOLD, MonoTextStyle},
+                                pixelcolor::BinaryColor,
+                                prelude::*,
+                                primitives::{
+                                    Circle, PrimitiveStyle, PrimitiveStyleBuilder, Rectangle, StrokeAlignment, Triangle,
+                                },
+                                text::{Alignment, Text},
+                                mock_display::MockDisplay,
+                            };
+
+                            //let thin_stroke = PrimitiveStyle::with_stroke(RgbColor::RED, 1);
+    //let thick_stroke = PrimitiveStyle::with_stroke(RgbColor::YELLOW, 3);
+    /*
+    let border_stroke = PrimitiveStyleBuilder::new()
+        .stroke_color(RgbColor::CYAN)
+        .stroke_width(3)
+        .stroke_alignment(StrokeAlignment::Inside)
+        .build();
+        */
+    //let fill = PrimitiveStyle::with_fill(RgbColor::MAGENTA);
+
+                            for i in 0..500u32 {
+                                let character_style = MonoTextStyle::new(&FONT_9X18_BOLD,
+                                    embedded_graphics::pixelcolor::Rgb565::new(i as u8,
+                                         ((i >> 1) as u8)+50,
+                                          ((i >> 2) as u8)+100));
+
+                                //let yoffset = 100;
+
+
+                                // Draw centered text.
+                                let text = "We are in!!";
+                                Text::with_alignment(
+                                    text,
+                                    Point::new(320/2+20, 25),
+                                    character_style,
+                                    Alignment::Center,
+                                )
+                                .draw(&mut display).unwrap();
+
+                                delay.delay_ms(5u8);
+
+                            }
+
+
+                        }
+
+
+
                     }
                 }
 
