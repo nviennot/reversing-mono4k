@@ -252,11 +252,13 @@ convert -size 256x341 -depth 16 GRAY:chunk-33.bin -define sample:offset=100 -sam
 
 ![Chunk 33 keys values](chunk-33-ab.png)
 
-This whole lookup table describes a permutation and its inverse. I'm not sure
-what that could be used for.
+This whole lookup table describes a permutation and its inverse.
 
-You can download the file [`chunk-33.bin`](/firmware/ui/chunk-33.bin) and try to
-make sense of it.
+[Marijn van der Werf (@marijnvdwerf)](https://github.com/marijnvdwerf) figured
+out its meaning. It's to convert UTF8 codepoints to
+[GB18030](https://encoding.spec.whatwg.org/gb18030.html) and vise versa.
+It's useful because the program has UTF8 chinese strings that needs to be
+displayed using the fonts organized in the GB18030 format.
 
 By the way, a tool I find really useful when trying different image
 interpretation is VSCode. It automatically reloads the image that is opened in a
