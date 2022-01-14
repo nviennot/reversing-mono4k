@@ -274,10 +274,19 @@ convert -size 480x68 RGB565:chunk-35.bin'[0]' chunk-35.png
 
 ![chunk-34-35.png](chunk-34-35.png)
 
-These images look like junk because there's no `480x320` display on this
-machine. Our touchscreen resulution is `320x240`. This could be from an other
-machine. I'm not sure how these leftovers made it on my printer. Maybe the
+The first part of chunk-34 looks like a font, but I'm not sure how to decode it.
+
+Then we have junk because there's no `480x320` display on this machine. Our
+touchscreen resulution is `320x240`. @marijnvdwerf discovered that these images
+are contained in the [Mono
+SE](https://www.anycubic.com/products/photon-mono-se-lcd-3d-printer) firmware.
+This junk data can be found in the Mono SE UI firmware file at the exact same
+offset.  I'm not sure how these leftovers made it on the Mono 4K. Maybe the
 engineers were in a hurry and dumped the ROM of the development board used for
 multiple machines onto the production machines.
+
+But we can conclude that the Mono 4K firmware is most likely based on the
+Mono SE firmware. This means that the FPGA firmware that can be downloaded is
+likely to be very similar to what is on the board of the Mono 4K.
 
 All the individual UI images can be found in [/firmware/ui](/firmware/ui)
