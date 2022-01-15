@@ -161,7 +161,8 @@ impl Machine {
                         .accmod().bits(0)
                         // Address setup time: not needed.
                         .addset().bits(0)
-                        // Data setup time. (2+1)/120MHz = 25ns. Should be plenty enough.
+                        // Data setup and hold time.
+                        // (2+1)/120MHz = 25ns. Should be plenty enough.
                         // Typically, 10ns is the minimum.
                         .datast().bits(2)
                         .datlat().bits(2)

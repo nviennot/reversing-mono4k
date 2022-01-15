@@ -24,9 +24,9 @@ display/5i $pc
 load
 
 # Resume execution
-continue
-
-
+monitor resume
+detach
+quit
 
 
 
