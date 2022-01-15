@@ -5,7 +5,7 @@
 mod drivers;
 
 #[macro_use]
-mod macros {
+pub mod macros {
     macro_rules! debug {
         ($($arg:expr),*) => ( cortex_m_semihosting::hprintln!($($arg),*).unwrap(); );
     }
@@ -26,12 +26,17 @@ use stm32f1xx_hal::{
     spi::{self, *}, delay::Delay, rcc::Clocks,
 };
 
-use drivers::ext_flash::ExtFlash;
+use drivers::{
+    ext_flash::ExtFlash,
+    display::Display,
+};
 
 use spi_memory::series25::Flash;
 
 struct Machine {
     ext_flash: ExtFlash,
+    display: Display,
+    delay: Delay,
 }
 
 use embedded_hal::digital::v2::OutputPin;
@@ -45,14 +50,13 @@ impl Machine {
         // the PCB instead of the internal oscillator.
         let cp = cortex_m::Peripherals::take().unwrap();
         let dp = Peripherals::take().unwrap();
-        //let mut rcc = dp.RCC.constrain();
-        let mut flash = dp.FLASH.constrain();
 
         let mut gpioa = dp.GPIOA.split();
         let mut gpiob = dp.GPIOB.split();
         let mut gpioc = dp.GPIOC.split();
         let mut gpiod = dp.GPIOD.split();
         let mut gpioe = dp.GPIOE.split();
+
 
         // Note, we can't use separate functions, because we are consuming (as
         // in taking ownership of) the device peripherals struct, and so we
@@ -71,7 +75,7 @@ impl Machine {
         //  External flash
         //--------------------------
 
-        let mut ext_flash = {
+        let ext_flash = {
             let cs = gpiob.pb12.into_push_pull_output_with_state(&mut gpiob.crh, PinState::High);
 
             let spi = {
@@ -84,7 +88,7 @@ impl Machine {
                     (sck, miso, mosi),
                     // For the SPI mode, I just picked the first option.
                     spi::Mode { polarity: spi::Polarity::IdleLow, phase: spi::Phase::CaptureOnFirstTransition },
-                    clocks.pclk1(), // Run as fast as we can (60Mhz). The flash chip can go up to 133Mhz.
+                    clocks.pclk1()/2, // Run as fast as we can (30Mhz). The flash chip can go up to 133Mhz.
                     clocks,
                 )
             };
@@ -98,29 +102,28 @@ impl Machine {
         //  TFT display
         //--------------------------
 
-        let _tft_display = {
+        let display = {
+            let reset = gpioc.pc6.into_push_pull_output(&mut gpioc.crl);
+            let _notsure = gpioa.pa6.into_push_pull_output(&mut gpioa.crl);
+            let backlight = gpioa.pa10.into_push_pull_output(&mut gpioa.crh);
 
-            unsafe {
-                (*pac::RCC::ptr()).ahbenr.modify(|_,w| w.bits(1 << 8));
-            }
-
-            let mut backlight = gpioa.pa10.into_push_pull_output(&mut gpioa.crh);
-
-            let mut notsure = gpioa.pa6.into_push_pull_output(&mut gpioa.crl);
-            let mut reset = gpioc.pc6.into_push_pull_output(&mut gpioc.crl);
-
+            // This initializes the EXMC module for the TFT display
             {
+
+                unsafe {
+                    // Enables the EXMC module
+                    (*pac::RCC::ptr()).ahbenr.modify(|_,w| w.bits(1 << 8));
+                }
                 // PD4: EXMC_NOE: Output Enable
                 gpiod.pd4.into_alternate_push_pull(&mut gpiod.crl);
 
                 // PD5: EXMC_NWE: Write enable
                 gpiod.pd5.into_alternate_push_pull(&mut gpiod.crl);
 
-                // PD7: EXMC_NCE0: Chip select
+                // PD7: EXMC_NE0: Chip select
                 gpiod.pd7.into_alternate_push_pull(&mut gpiod.crl);
 
                 // A16: Selects the Command or Data register
-                // Via setting (1 << 16) in the address.
                 gpiod.pd11.into_alternate_push_pull(&mut gpiod.crh);
 
                 // PD14..15: EXMC_D0..1
@@ -156,333 +159,93 @@ impl Machine {
                     dp.FSMC.btr1.write(|w| w
                         // Access Mode A
                         .accmod().bits(0)
-                        // Data latency 0 => 2 clk
-                        .datlat().bits(0)
-                        // syn clock divide ratio: 1
-                        .clkdiv().bits(0)
-
-                        // Bus latency
-                        .busturn().bits(0)
-                        // Data setup time
-                        .datast().bits(1)
-                        // Address setup time
+                        // Address setup time: not needed.
                         .addset().bits(0)
-
-                        /* Theirs
-                        // Bus latency
-                        .busturn().bits(3)
-                        // Data setup time
-                        .datast().bits(29)
-                        // Address setup time
-                        .addhld().bits(15)
-                        // Address setup time
-                        .addset().bits(15)
-                        */
+                        // Data setup time. (2+1)/120MHz = 25ns. Should be plenty enough.
+                        // Typically, 10ns is the minimum.
+                        .datast().bits(2)
+                        .datlat().bits(2)
                     );
                 }
             }
 
-            //backlight.set_high();
+            let mut display = drivers::display::Display { reset, backlight };
+            display.init(&mut delay);
+            display
+        };
 
-            delay.delay_ms(10u8);
-            reset.set_high();
-            delay.delay_ms(10u8);
-            reset.set_low();
-            delay.delay_ms(80u8);
-            reset.set_high();
-            delay.delay_ms(50u8);
-
-            // Now send tft commands
-
-            const TFT_REG: *mut u16 = 0x6000_0000u32 as *mut u16;
-            const TFT_DATA: *mut u16 = 0x6002_0000u32 as *mut u16;
-                fn cmd(cmd: u16, args: &[u16]) {
-                    unsafe {
-                        *TFT_REG = cmd;
-                        for a in args {
-                            *TFT_DATA = *a;
-                        }
-                    }
-                }
-
-                fn tft_command(cmd: u16) {
-                    unsafe { TFT_REG.write_volatile(cmd); }
-                }
-
-                fn tft_args(cmd: u16) {
-                    unsafe { TFT_DATA.write_volatile(cmd); }
-                }
-
-                tft_command(0xCF);
-                tft_args(0);
-                tft_args(0xC1);
-                tft_args(0x30);
-                delay.delay_us(80u8);
-                tft_command(0xED);
-                tft_args(0x64);
-                tft_args(3);
-                tft_args(0x12);
-                tft_args(0x81);
-                delay.delay_us(80u8);
-                tft_command(0xE8);
-                tft_args(0x85);
-                tft_args(0x10);
-                tft_args(0x7A);
-                delay.delay_us(80u8);
-                tft_command(0xCB);
-                tft_args(57);
-                tft_args(44);
-                tft_args(0);
-                tft_args(52);
-                tft_args(2);
-                delay.delay_us(80u8);
-                tft_command(0xF7);
-                tft_args(32);
-                delay.delay_us(80u8);
-                tft_command(0xEA);
-                tft_args(0);
-                tft_args(0);
-                delay.delay_us(80u8);
-                tft_command(0xC0);
-                tft_args(27);
-                delay.delay_us(80u8);
-                tft_command(0xC1);
-                tft_args(1);
-                delay.delay_us(80u8);
-                tft_command(0xC5);
-                tft_args(48);
-                tft_args(48);
-                delay.delay_us(80u8);
-                tft_command(0xC7);
-                tft_args(0xB7);
-                delay.delay_us(80u8);
-                tft_command(0x3A);
-                tft_args(0x55);
-                delay.delay_us(80u8);
-                tft_command(0x36);
-                tft_args(0xA8);
-                delay.delay_us(80u8);
-                tft_command(0xB1);
-                tft_args(0);
-                tft_args(0x12);
-                delay.delay_us(80u8);
-                tft_command(0xB6);
-                tft_args(10);
-                tft_args(162);
-                delay.delay_us(80u8);
-                tft_command(0x44);
-                tft_args(2);
-                delay.delay_us(80u8);
-                tft_command(0xF2);
-                tft_args(0);
-                delay.delay_us(80u8);
-                tft_command(0x26);
-                tft_args(1);
-                delay.delay_us(80u8);
-                tft_command(0xE0);
-                tft_args(0xF);
-
-                /*
-                delay.delay_us(80u8);
-                tft_command(0xE0);
-                tft_args(0xF);
-                tft_args(0x2A);
-                tft_args(0x28);
-                tft_args(8);
-
-                tft_args(0xE);
-                tft_args(8);
-                tft_args(0x54);
-                tft_args(0xA9);
-
-                tft_args(0x43);
-                tft_args(0xA);
-                tft_args(0xF);
-                tft_args(0);
-
-                tft_args(0);
-                tft_args(0);
-                tft_args(0);
-                delay.delay_us(80u8);
-                tft_command(0xE1);
-                tft_args(0);
-                tft_args(21);
-                tft_args(23);
-                tft_args(7);
-                tft_args(17);
-                tft_args(6);
-                tft_args(43);
-                tft_args(86);
-                tft_args(60);
-                tft_args(5);
-                tft_args(16);
-                tft_args(15);
-                tft_args(63);
-                tft_args(63);
-                tft_args(15);
-                */
-
-                delay.delay_us(80u8);
-
-                tft_command(0x11);
-                delay.delay_ms(8u8);
-
-                tft_command(0x29);
-                delay.delay_ms(1u8);
-
-                fn set_region() {
-                    tft_command(0x2A);
-                    tft_args(0);
-                    tft_args(0);
-                    tft_args(319 >> 8);
-                    tft_args(319);
-                    tft_command(0x2B);
-                    tft_args(0);
-                    tft_args(0);
-                    tft_args(239 >> 8);
-                    tft_args(239);
-                    tft_command(0x2C);
-                }
-
-
-
-                use core::convert::TryInto;
-                use embedded_graphics::{
-                    pixelcolor::{Gray8, GrayColor},
-                    prelude::*,
-                    primitives::{Circle, PrimitiveStyle},
-                };
-                use embedded_graphics::prelude::*;
-                struct Display {}
-                impl embedded_graphics_core::draw_target::DrawTarget for Display {
-                    type Color = embedded_graphics::pixelcolor::Rgb565;
-
-                    type Error = core::convert::Infallible;
-
-                    fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
-                    where
-                        I: IntoIterator<Item = embedded_graphics::Pixel<Self::Color>> {
-                            for Pixel(coord, color) in pixels.into_iter() {
-
-                                if let Ok((x @ 0..=320u32, y @ 0..=240u32)) = coord.try_into() {
-                                    let x = x as u16;
-                                    let y = y as u16;
-
-                                    tft_command(0x2A);
-                                    tft_args(x >> 8);
-                                    tft_args(x & 0xFF);
-                                    tft_args(x >> 8);
-                                    tft_args(x & 0xFF);
-                                    tft_command(0x2B);
-                                    tft_args(y >> 8);
-                                    tft_args(y & 0xFF);
-                                    tft_args(y >> 8);
-                                    tft_args(y & 0xFF);
-                                    tft_command(0x2C);
-                                    tft_args(embedded_graphics::pixelcolor::raw::RawU16::from(color).into_inner());
-                                }
-                            }
-                            Ok(())
-                    }
-                }
-
-                impl OriginDimensions for Display {
-                    fn size(&self) -> Size {
-                        Size::new(320, 240)
-                    }
-                }
-
-
-
-            backlight.set_high();
-
-                use spi_memory::prelude::*;
-
-                const BUFFER_SIZE: usize = 1*1024;
-                let mut buf = [0u8; BUFFER_SIZE];
-
-                loop {
-                    for img_offset in 0..30 {
-                        set_region();
-                        for offset in (0..320*240*2).step_by(BUFFER_SIZE) {
-                            ext_flash.0.read(img_offset*0x30000 + offset as u32, &mut buf).unwrap();
-                            for i in 0..BUFFER_SIZE/2 {
-                                tft_args(((buf[2*i+1] as u16) << 8) | buf[2*i] as u16);
-                            }
-                        }
-
-                        {
-
-                            let mut display = Display{};
-
-                            use embedded_graphics::{
-                                mono_font::{ascii::FONT_9X18_BOLD, MonoTextStyle},
-                                pixelcolor::BinaryColor,
-                                prelude::*,
-                                primitives::{
-                                    Circle, PrimitiveStyle, PrimitiveStyleBuilder, Rectangle, StrokeAlignment, Triangle,
-                                },
-                                text::{Alignment, Text},
-                                mock_display::MockDisplay,
-                            };
-
-                            //let thin_stroke = PrimitiveStyle::with_stroke(RgbColor::RED, 1);
-    //let thick_stroke = PrimitiveStyle::with_stroke(RgbColor::YELLOW, 3);
-    /*
-    let border_stroke = PrimitiveStyleBuilder::new()
-        .stroke_color(RgbColor::CYAN)
-        .stroke_width(3)
-        .stroke_alignment(StrokeAlignment::Inside)
-        .build();
-        */
-    //let fill = PrimitiveStyle::with_fill(RgbColor::MAGENTA);
-
-                            for i in 0..500u32 {
-                                let character_style = MonoTextStyle::new(&FONT_9X18_BOLD,
-                                    embedded_graphics::pixelcolor::Rgb565::new(i as u8,
-                                         ((i >> 1) as u8)+50,
-                                          ((i >> 2) as u8)+100));
-
-                                //let yoffset = 100;
-
-
-                                // Draw centered text.
-                                let text = "We are in!!";
-                                Text::with_alignment(
-                                    text,
-                                    Point::new(320/2+20, 25),
-                                    character_style,
-                                    Alignment::Center,
-                                )
-                                .draw(&mut display).unwrap();
-
-                                delay.delay_ms(5u8);
-
-                            }
-
-
-                        }
-
-
-
-                    }
-                }
-
-
-                //delay.delay_ms(100u8);
-                //pa10_backlight.set_high().unwrap();
-            };
-
-            Self { ext_flash }
-        }
+        Self { ext_flash, display, delay }
     }
+}
 
 
 fn main() -> ! {
     let mut machine = Machine::init();
+
+    let display = &mut machine.display;
+    let mut ext_flash = &mut machine.ext_flash;
+    let delay = &mut machine.delay;
+
+        display.draw_background_image(&mut ext_flash, 15, &Display::FULL_SCREEN);
+
+    {
+        use embedded_graphics::{
+            mono_font::{ascii::FONT_9X18_BOLD, MonoTextStyle},
+            pixelcolor::Rgb565,
+            prelude::*,
+            text::{Text, Alignment},
+        };
+
+        // Create a new character style
+        let style = MonoTextStyle::new(&FONT_9X18_BOLD, Rgb565::WHITE);
+
+        // Create a text at position (20, 30) and draw it using the previously defined style
+        let mut text = Text::with_alignment(
+            "We are in!!",
+            Point::new(100,100),
+            style,
+            Alignment::Left
+        );
+
+        display.draw_background_image(&mut ext_flash, 15, &Display::FULL_SCREEN);
+
+        let mut translate_by = Point::new(1,1);
+
+        loop {
+            text.translate_mut(translate_by);
+            text.draw(display).unwrap();
+
+            let bb = text.bounding_box();
+
+            delay.delay_ms(20u8);
+
+            display.draw_background_image(&mut ext_flash, 15, &bb);
+
+            let top_left = bb.top_left;
+            let bottom_right = bb.bottom_right().unwrap();
+
+            translate_by.x = match (translate_by.x > 0, top_left.x == 0, bottom_right.x as u16 == Display::WIDTH) {
+                (true, _, true) => -translate_by.x,
+                (false, true, _) => -translate_by.x,
+                _ => translate_by.x,
+            };
+
+            translate_by.y = match (translate_by.y > 0, top_left.y == 0, bottom_right.y as u16 == Display::HEIGHT) {
+                (true, _, true) => -translate_by.y,
+                (false, true, _) => -translate_by.y,
+                _ => translate_by.y,
+            };
+        }
+    }
+
+    loop {
+        for img_offset in 0..30 {
+            display.draw_background_image(&mut ext_flash, img_offset, &Display::FULL_SCREEN);
+            delay.delay_ms(2000u32);
+        }
+    }
+
     //machine.ext_flash.dump();
-    debug!("done");
-    loop {}
 }
 
 // For some reason, having #[entry] on main() makes auto-completion a bit broken.

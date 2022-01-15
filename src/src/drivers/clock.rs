@@ -14,9 +14,6 @@ use stm32f1xx_hal::{
     prelude::*,
 };
 
-// The stm32 create has the Clocks private, we'll do this hack to construct
-// a clocks struct.
-
 pub fn setup_clock_120m_hxtal(_rcc: stm32f1xx_hal::pac::RCC) -> Clocks {
     // Transcribed from the GD32F30x Firmware Library
     // Some of the registers in here are not in the datasheet.
@@ -89,29 +86,32 @@ pub fn setup_clock_120m_hxtal(_rcc: stm32f1xx_hal::pac::RCC) -> Clocks {
             .adcpsc_2().clear_bit()
         );
 
+        // The stm32 create has the Clocks struct, but all the fields are private.
+        // We are left doing this hack with transmuting memory.
+        // Not the safest thing, but good enough for now.
         struct ClocksDup {
-            hclk: Hertz,
-            pclk1: Hertz,
-            pclk2: Hertz,
-            ppre1: u8,
-            ppre2: u8,
-            sysclk: Hertz,
-            adcclk: Hertz,
-            usbclk_valid: bool,
+            _hclk: Hertz,
+            _pclk1: Hertz,
+            _pclk2: Hertz,
+            _ppre1: u8,
+            _ppre2: u8,
+            _sysclk: Hertz,
+            _adcclk: Hertz,
+            _usbclk_valid: bool,
         }
 
         let clocks = ClocksDup {
-            hclk: 120.mhz().into(),
-            pclk1: 60.mhz().into(),
-            pclk2: 120.mhz().into(),
+            _hclk: 120.mhz().into(),
+            _pclk1: 60.mhz().into(),
+            _pclk2: 120.mhz().into(),
 
-            ppre1: 0, // TODO Not sure what's that is used for
-            ppre2: 0, // TODO Not sure what's that is used for
+            _ppre1: 0, // TODO Not sure what's that is used for
+            _ppre2: 0, // TODO Not sure what's that is used for
 
-            sysclk: 120.mhz().into(),
-            adcclk: 30.mhz().into(),
+            _sysclk: 120.mhz().into(),
+            _adcclk: 30.mhz().into(),
 
-            usbclk_valid: true,
+            _usbclk_valid: true,
         };
 
         core::mem::transmute(clocks)
