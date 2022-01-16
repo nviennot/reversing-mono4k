@@ -124,8 +124,9 @@ impl Machine {
         //--------------------------
 
         let display = {
+            //let _notsure = gpioa.pa6.into_push_pull_output(&mut gpioa.crl);
+
             let reset = gpioc.pc6.into_push_pull_output(&mut gpioc.crl);
-            let _notsure = gpioa.pa6.into_push_pull_output(&mut gpioa.crl);
             let backlight = gpioa.pa10.into_push_pull_output(&mut gpioa.crh);
 
             // This initializes the EXMC module for the TFT display
@@ -198,12 +199,12 @@ impl Machine {
 
         let touch_screen = {
             let cs = gpioc.pc7.into_push_pull_output_with_state(&mut gpioc.crl, PinState::High);
-            let clk = gpioc.pc8.into_push_pull_output(&mut gpioc.crh);
-            let rx = gpioc.pc9.into_floating_input(&mut gpioc.crh);
-            let tx = gpioa.pa8.into_push_pull_output(&mut gpioa.crh);
-            let touch = gpioa.pa9.into_floating_input(&mut gpioa.crh);
+            let sck = gpioc.pc8.into_push_pull_output(&mut gpioc.crh);
+            let miso = gpioc.pc9.into_floating_input(&mut gpioc.crh);
+            let mosi = gpioa.pa8.into_push_pull_output(&mut gpioa.crh);
+            let touch_active = gpioa.pa9.into_floating_input(&mut gpioa.crh);
 
-            TouchScreen { cs, clk, rx, tx, touch }
+            TouchScreen { cs, sck, miso, mosi, touch_active }
         };
 
         Self { ext_flash, display, touch_screen, delay }

@@ -291,6 +291,6 @@ likely to be very similar to what is on the board of the Mono 4K.
 
 All the individual UI images can be found in [/firmware/ui](/firmware/ui)
 
-Next, we are going to interface with the touch screen.
+Next, we are going to interface with the touch screen display
 
 [Go to Part 6](../part6/README.md)

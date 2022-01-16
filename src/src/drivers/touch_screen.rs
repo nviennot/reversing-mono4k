@@ -15,15 +15,15 @@ use crate::debug;
 
 pub struct TouchScreen {
     pub cs: PC7<Output<PushPull>>,
-    pub clk: PC8<Output<PushPull>>,
-    pub rx: PC9<Input<Floating>>,
-    pub tx: PA8<Output<PushPull>>,
-    pub touch: PA9<Input<Floating>>,
+    pub sck: PC8<Output<PushPull>>,
+    pub miso: PC9<Input<Floating>>,
+    pub mosi: PA8<Output<PushPull>>,
+    pub touch_active: PA9<Input<Floating>>,
 }
 
 impl TouchScreen {
     pub fn has_touch(&self) -> bool {
-        self.touch.is_low()
+        self.touch_active.is_low()
     }
 
     pub fn is_touch_stable(&mut self, delay: &mut Delay) -> bool {
@@ -107,25 +107,25 @@ impl TouchScreen {
     pub fn exchange_data(&mut self, mut v: u8) -> u8 {
         let mut out: u8 = 0;
 
-        self.clk.set_low();
+        self.sck.set_low();
         Self::delay(1);
 
         for _ in 0..8 {
             out <<= 1;
             if v & 0x80 != 0 {
-                self.tx.set_high();
+                self.mosi.set_high();
             } else {
-                self.tx.set_low();
+                self.mosi.set_low();
             }
 
             Self::delay(1); // added
-            self.clk.set_high();
+            self.sck.set_high();
 
             Self::delay(1);
-            self.clk.set_low();
+            self.sck.set_low();
 
             Self::delay(1);
-            if self.rx.is_high() {
+            if self.miso.is_high() {
                 out |= 1;
             }
             v <<= 1;
@@ -136,7 +136,7 @@ impl TouchScreen {
 
     fn delay(num: u32) {
         // 20 was found from the original firmware.
-        // It's pretty long. *2 is actually enough.
+        // It's pretty long. 2 is actually enough.
         cortex_m::asm::delay(num*20);
     }
 }

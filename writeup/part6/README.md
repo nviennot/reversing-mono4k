@@ -258,7 +258,7 @@ let reset = gpioc.pc6.into_push_pull_output(&mut gpioc.crl);
 let _notsure = gpioa.pa6.into_push_pull_output(&mut gpioa.crl);
 let backlight = gpioa.pa10.into_push_pull_output(&mut gpioa.crh);
 
-// This initializes the EXMC module for the TFT display
+// This initializes the EXMC module for the LCD display
 unsafe {
     // Enables the EXMC module
     (*pac::RCC::ptr()).ahbenr.modify(|_,w| w.bits(1 << 8));
@@ -373,3 +373,7 @@ modal box.
 
 The source code driving the display can be found in
 [/src/src/drivers/display.rs](/src/src/drivers/display.rs).
+
+Next, we are going to detect touches on the display.
+
+[Go to Part 7](../part7/README.md)
