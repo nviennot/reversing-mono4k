@@ -17,6 +17,7 @@ stm32-fmc = "0.2"
 display-interface = "0.4"
 embedded-graphics = "0.7"
 embedded-graphics-core = "0.3"
+arrayvec = {version = "0.7", default-features = false }
 
 [dependencies.gd32f3]
 path = "../repos/gd32-rs/gd32f3"

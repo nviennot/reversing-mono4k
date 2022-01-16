@@ -4,11 +4,26 @@
 
 mod drivers;
 
-#[macro_use]
+
 pub mod macros {
     macro_rules! debug {
-        ($($arg:expr),*) => ( cortex_m_semihosting::hprintln!($($arg),*).unwrap(); );
+        () => {
+            cortex_m_semihosting::hprintln!("").unwrap();
+        };
+        ($s:expr) => {
+            cortex_m_semihosting::hprintln!($s).unwrap();
+        };
+        ($s:expr, $($tt:tt)*) => {
+            {
+                use core::fmt::Write;
+
+                let mut string = arrayvec::ArrayString::<1024>::new();
+                let _ = write!(&mut string, concat!($s, "\n"), $($tt)*);
+                cortex_m_semihosting::hprint!(&string).unwrap();
+            }
+        };
     }
+    pub(crate) use debug;
 }
 
 use cortex_m_rt::entry;
@@ -29,6 +44,7 @@ use stm32f1xx_hal::{
 use drivers::{
     ext_flash::ExtFlash,
     display::Display,
+    touch_screen::TouchScreen,
 };
 
 use spi_memory::series25::Flash;
@@ -36,6 +52,7 @@ use spi_memory::series25::Flash;
 struct Machine {
     ext_flash: ExtFlash,
     display: Display,
+    touch_screen: TouchScreen,
     delay: Delay,
 }
 
@@ -43,6 +60,8 @@ use embedded_hal::digital::v2::OutputPin;
 
 
 use drivers::clock;
+
+use macros::debug;
 
 impl Machine {
     pub fn init() -> Self {
@@ -70,6 +89,8 @@ impl Machine {
         // Can't use the HAL. The GD32 is too different.
         let clocks = clock::setup_clock_120m_hxtal(dp.RCC);
         let mut delay = Delay::new(cp.SYST, clocks);
+
+        debug!("delay: {:#?}", clocks);
 
         //--------------------------
         //  External flash
@@ -170,12 +191,22 @@ impl Machine {
                 }
             }
 
-            let mut display = drivers::display::Display { reset, backlight };
+            let mut display = Display { reset, backlight };
             display.init(&mut delay);
             display
         };
 
-        Self { ext_flash, display, delay }
+        let touch_screen = {
+            let cs = gpioc.pc7.into_push_pull_output_with_state(&mut gpioc.crl, PinState::High);
+            let clk = gpioc.pc8.into_push_pull_output(&mut gpioc.crh);
+            let rx = gpioc.pc9.into_floating_input(&mut gpioc.crh);
+            let tx = gpioa.pa8.into_push_pull_output(&mut gpioa.crh);
+            let touch = gpioa.pa9.into_floating_input(&mut gpioa.crh);
+
+            TouchScreen { cs, clk, rx, tx, touch }
+        };
+
+        Self { ext_flash, display, touch_screen, delay }
     }
 }
 
@@ -187,7 +218,46 @@ fn main() -> ! {
     let mut ext_flash = &mut machine.ext_flash;
     let delay = &mut machine.delay;
 
-        display.draw_background_image(&mut ext_flash, 15, &Display::FULL_SCREEN);
+    display.draw_background_image(&mut ext_flash, 15, &Display::FULL_SCREEN);
+
+    let mut count = 0;
+    loop {
+        use embedded_graphics::{
+            mono_font::{ascii::FONT_9X18_BOLD, MonoTextStyle},
+            pixelcolor::Rgb565,
+            prelude::*,
+            text::{Text, Alignment},
+            primitives::{Circle, PrimitiveStyle, PrimitiveStyleBuilder},
+        };
+
+        let style = PrimitiveStyle::with_fill(Rgb565::MAGENTA);
+
+        if let Some((x,y)) = machine.touch_screen.read_x_y(delay) {
+            count = 0;
+
+            let x = x as i32;
+            let y = y as i32;
+
+            Circle::new(Point::new(x, y), 10)
+                .into_styled(style)
+                .draw(display).unwrap();
+        }
+
+        count +=1;
+        if count > 10000000 {
+            count = 0;
+            display.draw_background_image(&mut ext_flash, 15, &Display::FULL_SCREEN);
+        }
+    }
+
+
+
+    loop {
+        for img_offset in 0..30 {
+            display.draw_background_image(&mut ext_flash, img_offset, &Display::FULL_SCREEN);
+            delay.delay_ms(2000u32);
+        }
+    }
 
     {
         use embedded_graphics::{
@@ -236,13 +306,6 @@ fn main() -> ! {
                 (false, true, _) => -translate_by.y,
                 _ => translate_by.y,
             };
-        }
-    }
-
-    loop {
-        for img_offset in 0..30 {
-            display.draw_background_image(&mut ext_flash, img_offset, &Display::FULL_SCREEN);
-            delay.delay_ms(2000u32);
         }
     }
 
