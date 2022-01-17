@@ -9,7 +9,7 @@ Reverse engineering the Anycubic Mono 4K
 * [Part 4: Dumping content of the external flash](/writeup/part4/README.md)
 * [Part 5: Graphics extraction from the external ROM](/writeup/part5/README.md)
 * [Part 6: Taking control of the user-facing LCD display](/writeup/part6/README.md)
-* [Part 7: Detecting touches on the display](/writeup/part7/README.md)
+* [Part 7: Detecting touches on the display and improving on the original firmware](/writeup/part7/README.md)
 
 ## Introduction
 
@@ -54,7 +54,7 @@ Apparently, we have to wait for a firmware update, but I'd rather not wait.
 * [Part 4: Dumping content of the external flash](/writeup/part4/README.md)
 * [Part 5: Graphics extraction from the external ROM](/writeup/part5/README.md)
 * [Part 6: Taking control of the user-facing LCD display](/writeup/part6/README.md)
-* [Part 7: Detecting touches on the display](/writeup/part7/README.md)
+* [Part 7: Detecting touches on the display and improving on the original firmware](/writeup/part7/README.md)
 
 
 ## Resources
