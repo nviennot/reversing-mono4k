@@ -14,7 +14,7 @@ found the touch detection initialization routines in the IDA Pro disassembly:
 ![decompilation.png](decompilation.png)
 
 The touch detection device seems vaguely similar to a
-[`FT5x16`](https://www.newhavendisplay.com/app_notes/FT5x16.pdf).
+[`FT5x16`](https://www.displayfuture.com/Display/datasheet/controller/FT5x06.pdf).
 
 Essentially, there are 5 wires to interface it:
 

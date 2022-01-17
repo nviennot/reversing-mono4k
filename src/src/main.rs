@@ -219,6 +219,8 @@ fn main() -> ! {
     let mut ext_flash = &mut machine.ext_flash;
     let delay = &mut machine.delay;
 
+    //machine.touch_screen.demo();
+
     display.draw_background_image(&mut ext_flash, 15, &Display::FULL_SCREEN);
 
     let mut count = 0;
