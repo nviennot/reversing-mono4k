@@ -1,6 +1,7 @@
 #![no_std]
 #![no_main]
-#![allow(unused_imports)]
+#![feature(alloc_error_handler)]
+#![allow(unused_imports, dead_code, unused_variables, unused_macros, unreachable_code)]
 
 mod drivers;
 
@@ -36,15 +37,21 @@ use panic_semihosting as _; // logs messages to the host stderr; requires a debu
 
 use stm32f1xx_hal::{
     prelude::*,
-    pac::{Peripherals, self},
+    pac::{Peripherals, self, interrupt, Interrupt, TIM7},
     gpio::PinState,
-    spi::{self, *}, delay::Delay, rcc::Clocks,
+    spi::{self, *},
+    delay::Delay,
+    rcc::Clocks,
+    timer::{Timer, Tim2NoRemap, Event, CountDownTimer},
+    pwm::Channel,
+
 };
 
 use drivers::{
     ext_flash::ExtFlash,
     display::Display,
     touch_screen::TouchScreen,
+    stepper::{prelude::*, Direction, Stepper, InterruptibleStepper},
 };
 
 use spi_memory::series25::Flash;
@@ -53,6 +60,7 @@ struct Machine {
     ext_flash: ExtFlash,
     display: Display,
     touch_screen: TouchScreen,
+    stepper: InterruptibleStepper,
     delay: Delay,
 }
 
@@ -62,6 +70,9 @@ use embedded_hal::digital::v2::OutputPin;
 use drivers::clock;
 
 use macros::debug;
+
+use core::{cell::RefCell, time::Duration, mem::MaybeUninit};
+use cortex_m::interrupt::Mutex;
 
 impl Machine {
     pub fn init() -> Self {
@@ -76,6 +87,8 @@ impl Machine {
         let mut gpiod = dp.GPIOD.split();
         let mut gpioe = dp.GPIOE.split();
 
+        let mut afio = dp.AFIO.constrain();
+
 
         // Note, we can't use separate functions, because we are consuming (as
         // in taking ownership of) the device peripherals struct, and so we
@@ -89,233 +102,287 @@ impl Machine {
         // Can't use the HAL. The GD32 is too different.
         let clocks = clock::setup_clock_120m_hxtal(dp.RCC);
         let mut delay = Delay::new(cp.SYST, clocks);
-
-        debug!("delay: {:#?}", clocks);
+        //init_systick(&clocks, cp.SYST);
 
         //--------------------------
         //  External flash
         //--------------------------
 
-        let ext_flash = {
-            let cs = gpiob.pb12.into_push_pull_output_with_state(&mut gpiob.crh, PinState::High);
-
-            let spi = {
-                let sck = gpiob.pb13.into_alternate_push_pull(&mut gpiob.crh);
-                let miso = gpiob.pb14.into_floating_input(&mut gpiob.crh);
-                let mosi = gpiob.pb15.into_alternate_push_pull(&mut gpiob.crh);
-
-                Spi::spi2(
-                    dp.SPI2,
-                    (sck, miso, mosi),
-                    // For the SPI mode, I just picked the first option.
-                    spi::Mode { polarity: spi::Polarity::IdleLow, phase: spi::Phase::CaptureOnFirstTransition },
-                    clocks.pclk1()/2, // Run as fast as we can (30Mhz). The flash chip can go up to 133Mhz.
-                    clocks,
-                )
-            };
-
-            // Initialize the spi-memory library
-            ExtFlash(Flash::init(spi, cs).unwrap())
-        };
-
+        let ext_flash = ExtFlash::new(
+            gpiob.pb12, gpiob.pb13, gpiob.pb14, gpiob.pb15,
+            dp.SPI2,
+            &clocks, &mut gpiob.crh
+        );
 
         //--------------------------
         //  TFT display
         //--------------------------
 
-        let display = {
-            //let _notsure = gpioa.pa6.into_push_pull_output(&mut gpioa.crl);
+        //let _notsure = gpioa.pa6.into_push_pull_output(&mut gpioa.crl);
+        let mut display = Display::new(
+            gpioc.pc6, gpioa.pa10,
+            gpiod.pd4, gpiod.pd5, gpiod.pd7, gpiod.pd11,
+            gpiod.pd14, gpiod.pd15, gpiod.pd0, gpiod.pd1, gpioe.pe7, gpioe.pe8,
+            gpioe.pe9, gpioe.pe10, gpioe.pe11, gpioe.pe12, gpioe.pe13,
+            gpioe.pe14, gpioe.pe15, gpiod.pd8, gpiod.pd9, gpiod.pd10,
+            dp.FSMC,
+            &mut gpioa.crh, &mut gpioc.crl, &mut gpiod.crl, &mut gpiod.crh, &mut gpioe.crl, &mut gpioe.crh,
+        );
+        display.init(&mut delay);
 
-            let reset = gpioc.pc6.into_push_pull_output(&mut gpioc.crl);
-            let backlight = gpioa.pa10.into_push_pull_output(&mut gpioa.crh);
+        //--------------------------
+        //  Touch screen
+        //--------------------------
 
-            // This initializes the EXMC module for the TFT display
-            {
+        let touch_screen = TouchScreen::new(
+            gpioc.pc7, gpioc.pc8, gpioc.pc9, gpioa.pa8, gpioa.pa9,
+            &mut gpioa.crh, &mut gpioc.crl, &mut gpioc.crh,
+        );
 
-                unsafe {
-                    // Enables the EXMC module
-                    (*pac::RCC::ptr()).ahbenr.modify(|_,w| w.bits(1 << 8));
-                }
-                // PD4: EXMC_NOE: Output Enable
-                gpiod.pd4.into_alternate_push_pull(&mut gpiod.crl);
+        //--------------------------
+        //  Stepper motor (Z-axis)
+        //--------------------------
 
-                // PD5: EXMC_NWE: Write enable
-                gpiod.pd5.into_alternate_push_pull(&mut gpiod.crl);
+        let stepper = Stepper::new(
+            gpioe.pe4, gpioe.pe5, gpioe.pe6,
+            gpioc.pc3, gpioc.pc0,
+            gpioc.pc1, gpioc.pc2,
+            gpioa.pa3,
+            Timer::new(dp.TIM2, &clocks), Timer::new(dp.TIM7, &clocks),
+            &mut gpioa.crl, &mut gpioc.crl, &mut gpioe.crl, &mut afio.mapr,
+        ).interruptible();
 
-                // PD7: EXMC_NE0: Chip select
-                gpiod.pd7.into_alternate_push_pull(&mut gpiod.crl);
-
-                // A16: Selects the Command or Data register
-                gpiod.pd11.into_alternate_push_pull(&mut gpiod.crh);
-
-                // PD14..15: EXMC_D0..1
-                // PD0..1:   EXMC_D2..3
-                // PE7..15:  EXMC_D4..12
-                // PD8..10:  EXMC_D13..15
-                gpiod.pd14.into_alternate_push_pull(&mut gpiod.crh);
-                gpiod.pd15.into_alternate_push_pull(&mut gpiod.crh);
-                gpiod.pd0.into_alternate_push_pull(&mut gpiod.crl);
-                gpiod.pd1.into_alternate_push_pull(&mut gpiod.crl);
-                gpioe.pe7.into_alternate_push_pull(&mut gpioe.crl);
-                gpioe.pe8.into_alternate_push_pull(&mut gpioe.crh);
-                gpioe.pe9.into_alternate_push_pull(&mut gpioe.crh);
-                gpioe.pe10.into_alternate_push_pull(&mut gpioe.crh);
-                gpioe.pe11.into_alternate_push_pull(&mut gpioe.crh);
-                gpioe.pe12.into_alternate_push_pull(&mut gpioe.crh);
-                gpioe.pe13.into_alternate_push_pull(&mut gpioe.crh);
-                gpioe.pe14.into_alternate_push_pull(&mut gpioe.crh);
-                gpioe.pe15.into_alternate_push_pull(&mut gpioe.crh);
-                gpiod.pd8.into_alternate_push_pull(&mut gpiod.crh);
-                gpiod.pd9.into_alternate_push_pull(&mut gpiod.crh);
-                gpiod.pd10.into_alternate_push_pull(&mut gpiod.crh);
-
-                unsafe {
-                    dp.FSMC.bcr1.write(|w| w
-                        // Enable NOR Bank 0
-                        .mbken().set_bit()
-                        // data width: 16 bits
-                        .mwid().bits(1)
-                        // write: enable
-                        .wren().set_bit()
-                    );
-                    dp.FSMC.btr1.write(|w| w
-                        // Access Mode A
-                        .accmod().bits(0)
-                        // Address setup time: not needed.
-                        .addset().bits(0)
-                        // Data setup and hold time.
-                        // (2+1)/120MHz = 25ns. Should be plenty enough.
-                        // Typically, 10ns is the minimum.
-                        .datast().bits(2)
-                        .datlat().bits(2)
-                    );
-                }
-            }
-
-            let mut display = Display { reset, backlight };
-            display.init(&mut delay);
-            display
-        };
-
-        let touch_screen = {
-            let cs = gpioc.pc7.into_push_pull_output_with_state(&mut gpioc.crl, PinState::High);
-            let sck = gpioc.pc8.into_push_pull_output(&mut gpioc.crh);
-            let miso = gpioc.pc9.into_floating_input(&mut gpioc.crh);
-            let mosi = gpioa.pa8.into_push_pull_output(&mut gpioa.crh);
-            let touch_active = gpioa.pa9.into_floating_input(&mut gpioa.crh);
-
-            TouchScreen { cs, sck, miso, mosi, touch_active }
-        };
-
-        Self { ext_flash, display, touch_screen, delay }
+        Self { ext_flash, display, touch_screen, stepper, delay }
     }
 }
 
+struct TouchGlobal {
+    touch_screen: TouchScreen,
+    delay: Delay,
+}
+
+static mut TOUCH: Option<TouchGlobal> = None;
 
 fn main() -> ! {
-    let mut machine = Machine::init();
+    let start = cortex_m_rt::heap_start() as usize;
+    let size = 70*1024;
+    unsafe { ALLOCATOR.init(start, size) }
 
-    let display = &mut machine.display;
-    let mut ext_flash = &mut machine.ext_flash;
-    let delay = &mut machine.delay;
+
+    let machine = Machine::init();
+
+    let mut display = machine.display;
+    let ext_flash = machine.ext_flash;
+    let delay = machine.delay;
+    let mut stepper = machine.stepper;
+    let touch_screen = machine.touch_screen;
+
+    unsafe {
+        let delay = core::mem::transmute_copy(&delay);
+        TOUCH = Some(TouchGlobal { touch_screen, delay });
+    }
 
     //machine.touch_screen.demo();
 
-    display.draw_background_image(&mut ext_flash, 15, &Display::FULL_SCREEN);
+    //display.draw_background_image(&mut ext_flash, 15, &Display::FULL_SCREEN);
+    display.backlight.set_high();
 
-    let mut count = 0;
-    loop {
-        use embedded_graphics::{
-            mono_font::{ascii::FONT_9X18_BOLD, MonoTextStyle},
-            pixelcolor::Rgb565,
-            prelude::*,
-            text::{Text, Alignment},
-            primitives::{Circle, PrimitiveStyle, PrimitiveStyleBuilder},
-        };
-
-        let style = PrimitiveStyle::with_fill(Rgb565::MAGENTA);
-
-        if let Some((x,y)) = machine.touch_screen.read_x_y(delay) {
-            count = 0;
-
-            let x = x as i32;
-            let y = y as i32;
-
-            Circle::new(Point::new(x, y), 10)
-                .into_styled(style)
-                .draw(display).unwrap();
-        }
-
-        count +=1;
-        if count > 10000000 {
-            count = 0;
-            display.draw_background_image(&mut ext_flash, 15, &Display::FULL_SCREEN);
-        }
+    /*
+    for position in [(-100.0).mm(), 100.0.mm()] {
+        machine.stepper.modify(|s| { s.set_target_relative(position); });
+        machine.stepper.wait_for_completion();
+        delay.delay_ms(1000u32);
     }
-
-
-
-    loop {
-        for img_offset in 0..30 {
-            display.draw_background_image(&mut ext_flash, img_offset, &Display::FULL_SCREEN);
-            delay.delay_ms(2000u32);
-        }
-    }
+    */
 
     {
+        use core::fmt::Write;
+        use cstr_core::CString;
+
+        use lvgl::*;
+        use lvgl::style::*;
+        use lvgl::widgets::*;
+
         use embedded_graphics::{
-            mono_font::{ascii::FONT_9X18_BOLD, MonoTextStyle},
-            pixelcolor::Rgb565,
             prelude::*,
-            text::{Text, Alignment},
+            pixelcolor::{Rgb565, raw::RawU16},
+            primitives::Rectangle,
         };
 
-        // Create a new character style
-        let style = MonoTextStyle::new(&FONT_9X18_BOLD, Rgb565::WHITE);
+        let mut ui = UI::init().unwrap();
+        ui.disp_drv_register(display).unwrap();
+        let mut screen = ui.scr_act().unwrap();
 
-        // Create a text at position (20, 30) and draw it using the previously defined style
-        let mut text = Text::with_alignment(
-            "We are in!!",
-            Point::new(100,100),
-            style,
-            Alignment::Left
-        );
+        unsafe extern "C" fn input_read_cb(drv: *mut lvgl_sys::lv_indev_drv_t, data: *mut lvgl_sys::lv_indev_data_t) -> bool {
+            let t = TOUCH.as_mut().unwrap();
 
-        display.draw_background_image(&mut ext_flash, 15, &Display::FULL_SCREEN);
+            if let Some((x,y)) = t.touch_screen.read_x_y(&mut t.delay) {
+                (*data).point.x = x as i16;
+                (*data).point.y = y as i16;
+                (*data).state = lvgl_sys::LV_INDEV_STATE_PR as u8;
+            } else {
+                (*data).state = lvgl_sys::LV_INDEV_STATE_REL as u8;
+            }
 
-        let mut translate_by = Point::new(1,1);
+            false
+        }
+
+        let indev_drv = unsafe {
+            let mut indev_drv = MaybeUninit::<lvgl_sys::lv_indev_drv_t>::uninit();
+            lvgl_sys::lv_indev_drv_init(indev_drv.as_mut_ptr());
+            let mut indev_drv = indev_drv.assume_init();
+            indev_drv.type_ = lvgl_sys::LV_INDEV_TYPE_POINTER as u8;
+            indev_drv.read_cb = Some(input_read_cb);
+            lvgl_sys::lv_indev_drv_register(&mut indev_drv as *mut lvgl_sys::lv_indev_drv_t);
+            indev_drv
+        };
+
+        let mut screen_style = Style::default();
+        screen_style.set_bg_color(State::DEFAULT, Color::from_rgb((80, 80, 80)));
+        //screen_style.set_radius(State::DEFAULT, 0);
+        //screen.add_style(Part::Main, screen_style).unwrap();
+        //screen_style.fl
+
+        let spacing = 12;
+
+        {
+            let mut label = Label::new(&mut screen).unwrap();
+            label.set_text(CString::new("Turbo Resin v0.1.0").unwrap().as_c_str()).unwrap();
+            label.set_align(&mut screen, Align::InBottomRight, -5, -5).unwrap();
+        }
+
+        let mut btn_up = {
+            let mut btn = Btn::new(&mut screen).unwrap();
+            btn.set_align(&mut screen, Align::InTopMid, 0, 2*spacing).unwrap();
+            let mut label = Label::new(&mut btn).unwrap();
+            label.set_text(CString::new("Move Up").unwrap().as_c_str()).unwrap();
+            label.set_label_align(LabelAlign::Center).unwrap();
+            btn.set_checkable(true).unwrap();
+            btn
+        };
+
+        let mut btn_up_active = false;
+        let mut btn_down_active = false;
+
+        let mut btn_down = {
+            let mut btn = Btn::new(&mut screen).unwrap();
+            btn.set_align(&mut btn_up, Align::OutBottomMid, 0, spacing).unwrap();
+            let mut label = Label::new(&mut btn).unwrap();
+            label.set_text(CString::new("Move Down").unwrap().as_c_str()).unwrap();
+            label.set_label_align(LabelAlign::Center).unwrap();
+            btn.set_checkable(true).unwrap();
+            btn
+        };
+
+        btn_up.on_event(|_, event| {
+            if let lvgl::Event::Clicked = event {
+                btn_up_active = !btn_up_active;
+                if btn_up_active {
+                    stepper.modify(|s| s.set_target_relative(100.0.mm()));
+                    unsafe {
+                        lvgl_sys::lv_btn_set_state(btn_down.raw().unwrap().as_mut(),
+                            lvgl_sys::LV_BTN_STATE_DISABLED as u8);
+                    }
+                } else {
+                    stepper.modify(|s| s.controlled_stop());
+                }
+            }
+        }).unwrap();
+
+        btn_down.on_event(|_, event| {
+            if let lvgl::Event::Clicked = event {
+                btn_down_active = !btn_down_active;
+                if btn_down_active {
+                    stepper.modify(|s| s.set_target_relative((-100.0).mm()));
+                    unsafe {
+                        lvgl_sys::lv_btn_set_state(btn_up.raw().unwrap().as_mut(),
+                            lvgl_sys::LV_BTN_STATE_DISABLED as u8);
+                    }
+                } else {
+                    stepper.modify(|s| s.controlled_stop());
+                }
+            }
+        }).unwrap();
+
+        let (speed_slider, mut speed_label) = {
+            let mut speed_slider = Slider::new(&mut screen).unwrap();
+            speed_slider.set_align(&mut btn_down, Align::OutBottomMid, 0, 2*spacing).unwrap();
+
+            let mut speed_label = Label::new(&mut screen).unwrap();
+            speed_label.set_align(&mut speed_slider, Align::OutBottomLeft, 70, spacing).unwrap();
+            speed_label.set_width(320).unwrap();
+            speed_label.set_text(&CString::new("Max Speed: 5 mm/s").unwrap()).unwrap();
+            speed_label.set_label_align(LabelAlign::Left).unwrap();
+
+            let value = unsafe { lvgl_sys::lv_bar_set_range(speed_slider.raw().unwrap().as_mut(), 1500, 10_000) };
+            unsafe { lvgl_sys::lv_bar_set_value(speed_slider.raw().unwrap().as_mut(), 10_000, 0) };
+            speed_slider.on_event(|slider, event| {
+                let value = unsafe { lvgl_sys::lv_slider_get_value(slider.raw().unwrap().as_ref()) };
+                let value = (value as f32)/10000.0;
+                let value = value*value*value;
+
+                let value = value * 30.0;
+                stepper.modify(|s| s.set_max_speed(Some(value.mm())));
+            }).unwrap();
+
+            (speed_slider, speed_label)
+        };
+
+        let mut position_label = {
+            let mut position = Label::new(&mut screen).unwrap();
+            position.set_align(&mut speed_label, Align::OutBottomLeft, 0, 0).unwrap();
+            position.set_text(CString::new("Position: 0 mm").unwrap().as_c_str()).unwrap();
+            position
+        };
 
         loop {
-            text.translate_mut(translate_by);
-            text.draw(display).unwrap();
-
-            let bb = text.bounding_box();
-
-            delay.delay_ms(20u8);
-
-            display.draw_background_image(&mut ext_flash, 15, &bb);
-
-            let top_left = bb.top_left;
-            let bottom_right = bb.bottom_right().unwrap();
-
-            translate_by.x = match (translate_by.x > 0, top_left.x == 0, bottom_right.x as u16 == Display::WIDTH) {
-                (true, _, true) => -translate_by.x,
-                (false, true, _) => -translate_by.x,
-                _ => translate_by.x,
+            let text = {
+                let mut string = arrayvec::ArrayString::<100>::new();
+                let p = stepper.access(|s| s.current_position);
+                let _ = write!(&mut string, "Position: {:.2} mm", p.as_mm());
+                CString::new(&*string).unwrap()
             };
+            position_label.set_text(&text).unwrap();
 
-            translate_by.y = match (translate_by.y > 0, top_left.y == 0, bottom_right.y as u16 == Display::HEIGHT) {
-                (true, _, true) => -translate_by.y,
-                (false, true, _) => -translate_by.y,
-                _ => translate_by.y,
+            let text = {
+                let mut string = arrayvec::ArrayString::<100>::new();
+                let p = stepper.access(|s| s.max_speed);
+                let _ = write!(&mut string, "Max Speed: {:.2} mm/s", p.as_mm());
+                CString::new(&*string).unwrap()
             };
+            speed_label.set_text(&text).unwrap();
+
+            ui.task_handler();
+
+            if stepper.access(|s| s.is_idle()) {
+                btn_down_active = false;
+                btn_up_active = false;
+
+                unsafe {
+                    lvgl_sys::lv_btn_set_state(btn_up.raw().unwrap().as_mut(),
+                        lvgl_sys::LV_BTN_STATE_RELEASED as u8);
+                    lvgl_sys::lv_btn_set_state(btn_down.raw().unwrap().as_mut(),
+                        lvgl_sys::LV_BTN_STATE_RELEASED as u8);
+                }
+            }
+
+            ui.tick_inc(Duration::from_millis(20));
         }
     }
-
-    //machine.ext_flash.dump();
 }
 
 // For some reason, having #[entry] on main() makes auto-completion a bit broken.
 // Adding a function call fixes it.
 #[entry]
 fn _main() -> ! { main() }
+
+use alloc_cortex_m::CortexMHeap;
+
+#[global_allocator]
+static ALLOCATOR: CortexMHeap = CortexMHeap::empty();
+
+#[alloc_error_handler]
+fn oom(_: core::alloc::Layout) -> ! {
+    debug!("OOM");
+    loop {}
+}

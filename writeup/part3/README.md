@@ -47,6 +47,8 @@ There's a device create for our device family
 [`gd32f1x0-hal`](https://github.com/qwandor/gd32f1x0-hal) crate. These are good
 starting points.
 
+*NOTE from the future*: Using the `stm32f1xx-hal` crate is better. See in [Part 4](../part4/README.md).
+
 ## Creating the device crate
 
 Manufacturers provide support for various development environments. To make
@@ -161,6 +163,8 @@ The `cortex-m-*` crates provides access to CPU configuration registers. The
 `panic` crates provides behavior for what to do when our program panics.
 The `semihosting` crates are for the MCU to communicate with a host via a debug
 channel (here OpenOCD + GDB), we'll get to it.
+
+*NOTE from the future*: Using the `stm32f1xx-hal` crate is better. See in [Part 4](../part4/README.md).
 
 ### Memory layout
 

@@ -18,6 +18,15 @@ display-interface = "0.4"
 embedded-graphics = "0.7"
 embedded-graphics-core = "0.3"
 arrayvec = {version = "0.7", default-features = false }
+ramp-maker = {version = "0.2", features = ["libm"]}
+cty = "0.2"
+
+lvgl = { path = "../repos/lvgl-rs/lvgl" }
+lvgl-sys = { path = "../repos/lvgl-rs/lvgl-sys" }
+heapless = "0.5"
+#memchr= { version = "2", default-features = false }
+cstr_core = "0.2"
+alloc-cortex-m = "0.4"
 
 [dependencies.gd32f3]
 path = "../repos/gd32-rs/gd32f3"

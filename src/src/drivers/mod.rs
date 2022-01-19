@@ -3,3 +3,5 @@ pub mod hio;
 pub mod clock;
 pub mod display;
 pub mod touch_screen;
+pub mod stepper;
+pub mod ticks;

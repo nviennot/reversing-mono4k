@@ -142,6 +142,9 @@ For each pin, the configuration is the following:
 
 ![GPIO configuration](gpio_config.png)
 
+
+From the datasheet of the [`GD32F30x`](/datasheet/GD32F30x_User_Manual_EN_v2.3.pdf), page 175.
+
 Decoding the meaning of these 4 registers is not obvious, so I wrote a python
 script that you can find at [`firmware/print_port_config.py`](../firmware/print_port_config.py).
 The full pin configuration can be found at [`firmware/port_config.txt`](../firmware/port_config.txt).

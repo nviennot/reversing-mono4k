@@ -13,8 +13,8 @@ set pagination off
 set print asm-demangle on
 
 # Loads the plugin to read registers in readable format
-source ../repos/PyCortexMDebug/scripts/gdb.py
-svd_load ../repos/gd32-rs/svd/gd32f307.svd
+#source ../repos/PyCortexMDebug/scripts/gdb.py
+#svd_load ../repos/gd32-rs/svd/gd32f307.svd
 
 
 # Print 5 instructions every time we break.

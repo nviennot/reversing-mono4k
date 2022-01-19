@@ -26,6 +26,24 @@ impl TouchScreen {
     // 30% is too little. points can jump around.
     const TOUCH_PRESSURE_THRESHOLD: u32 = 35;
 
+    pub fn new(
+        cs: PC7<Input<Floating>>,
+        sck: PC8<Input<Floating>>,
+        miso: PC9<Input<Floating>>,
+        mosi: PA8<Input<Floating>>,
+        touch_active: PA9<Input<Floating>>,
+        gpioa_crh: &mut Cr<CRH, 'A'>,
+        gpioc_crl: &mut Cr<CRL, 'C'>,
+        gpioc_crh: &mut Cr<CRH, 'C'>,
+    ) -> Self {
+        let cs = cs.into_push_pull_output_with_state(gpioc_crl, PinState::High);
+        let sck = sck.into_push_pull_output(gpioc_crh);
+        let miso = miso.into_floating_input(gpioc_crh);
+        let mosi = mosi.into_push_pull_output(gpioa_crh);
+
+        Self { cs, sck, miso, mosi, touch_active }
+    }
+
     pub fn has_touch(&self) -> bool {
         self.touch_active.is_low()
     }
@@ -35,7 +53,7 @@ impl TouchScreen {
             return None;
         }
 
-        const NUM_SAMPLES: usize = 10;
+        const NUM_SAMPLES: usize = 5;
 
         let mut xs = [0u16; NUM_SAMPLES];
         let mut ys = [0u16; NUM_SAMPLES];
@@ -80,11 +98,6 @@ impl TouchScreen {
 
     // Returns (x,y) coordinates if a touch is detected
     fn read_raw_x_y_once(&mut self) -> Option<(u16, u16)> {
-        // The touch wire better be on.
-        if !self.has_touch() {
-            return None;
-        }
-
         let x = self.read_cmd(0x90) >> 4; // swapping MSB -> LSB gives 0x09
         let y = self.read_cmd(0xD0) >> 4; // swapping MSB -> LSB gives 0x0B
 

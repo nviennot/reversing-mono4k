@@ -1,5 +1,5 @@
-Reverse engineering the Anycubic Mono 4K
-========================================
+Reverse engineering the Anycubic Photon Mono 4K
+===============================================
 
 ## Table of content
 
@@ -10,6 +10,8 @@ Reverse engineering the Anycubic Mono 4K
 * [Part 5: Graphics extraction from the external ROM](/writeup/part5/README.md)
 * [Part 6: Taking control of the user-facing LCD display](/writeup/part6/README.md)
 * [Part 7: Detecting touches on the display and improving on the original firmware](/writeup/part7/README.md)
+* [Part 8: Driving the Z-axis stepper motor](/writeup/part8/README.md)
+
 
 ## Introduction
 
@@ -55,6 +57,7 @@ Apparently, we have to wait for a firmware update, but I'd rather not wait.
 * [Part 5: Graphics extraction from the external ROM](/writeup/part5/README.md)
 * [Part 6: Taking control of the user-facing LCD display](/writeup/part6/README.md)
 * [Part 7: Detecting touches on the display and improving on the original firmware](/writeup/part7/README.md)
+* [Part 8: Driving the Z-axis stepper motor](/writeup/part8/README.md)
 
 
 ## Resources

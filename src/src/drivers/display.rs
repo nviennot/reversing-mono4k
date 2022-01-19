@@ -4,9 +4,12 @@ use stm32f1xx_hal::{
     gpio::gpioa::*,
     gpio::gpiob::*,
     gpio::gpioc::*,
+    gpio::gpiod::*,
+    gpio::gpioe::*,
     //pac::Peripherals,
     //rcc::{Clocks, APB1},
     delay::Delay,
+    pac::{self, FSMC},
 };
 
 use spi_memory::{
@@ -27,11 +30,105 @@ impl Display {
     pub const WIDTH: u16 = 320;
     pub const HEIGHT: u16 = 240;
 
-    pub const FULL_SCREEN: Rectangle =
-        Rectangle::new(
-            Point::new(0,0),
-            Size::new(Self::WIDTH as u32, Self::HEIGHT as u32)
-        );
+    pub const FULL_SCREEN: Rectangle = Rectangle::new(
+        Point::new(0,0),
+        Size::new(Self::WIDTH as u32, Self::HEIGHT as u32)
+    );
+
+    pub fn new(
+        reset: PC6<Input<Floating>>,
+        backlight: PA10<Input<Floating>>,
+
+        output_enable: PD4<Input<Floating>>,
+        write_enable: PD5<Input<Floating>>,
+        cs: PD7<Input<Floating>>,
+        a16: PD11<Input<Floating>>,
+
+        d0: PD14<Input<Floating>>,
+        d1: PD15<Input<Floating>>,
+        d2: PD0<Input<Floating>>,
+        d3: PD1<Input<Floating>>,
+        d4: PE7<Input<Floating>>,
+        d5: PE8<Input<Floating>>,
+        d6: PE9<Input<Floating>>,
+        d7: PE10<Input<Floating>>,
+        d8: PE11<Input<Floating>>,
+        d9: PE12<Input<Floating>>,
+        d10: PE13<Input<Floating>>,
+        d11: PE14<Input<Floating>>,
+        d12: PE15<Input<Floating>>,
+        d13: PD8<Input<Floating>>,
+        d14: PD9<Input<Floating>>,
+        d15: PD10<Input<Floating>>,
+
+        fsmc: FSMC,
+
+        gpioa_crh: &mut Cr<CRH, 'A'>,
+        gpioc_crl: &mut Cr<CRL, 'C'>,
+        gpiod_crl: &mut Cr<CRL, 'D'>,
+        gpiod_crh: &mut Cr<CRH, 'D'>,
+        gpioe_crl: &mut Cr<CRL, 'E'>,
+        gpioe_crh: &mut Cr<CRH, 'E'>,
+    ) -> Self {
+
+        let reset = reset.into_push_pull_output(gpioc_crl);
+        let backlight = backlight.into_push_pull_output(gpioa_crh);
+
+        unsafe {
+            // Enables the EXMC module
+            (*pac::RCC::ptr()).ahbenr.modify(|_,w| w.bits(1 << 8));
+        }
+
+        // PD4: EXMC_NOE: Output Enable
+        output_enable.into_alternate_push_pull(gpiod_crl);
+        // PD5: EXMC_NWE: Write enable
+        write_enable.into_alternate_push_pull(gpiod_crl);
+        // PD7: EXMC_NE0: Chip select
+        cs.into_alternate_push_pull(gpiod_crl);
+        // A16: Selects the Command or Data register
+        a16.into_alternate_push_pull(gpiod_crh);
+
+        d0.into_alternate_push_pull(gpiod_crh);
+        d1.into_alternate_push_pull(gpiod_crh);
+        d2.into_alternate_push_pull(gpiod_crl);
+        d3.into_alternate_push_pull(gpiod_crl);
+        d4.into_alternate_push_pull(gpioe_crl);
+        d5.into_alternate_push_pull(gpioe_crh);
+        d6.into_alternate_push_pull(gpioe_crh);
+        d7.into_alternate_push_pull(gpioe_crh);
+        d8.into_alternate_push_pull(gpioe_crh);
+        d9.into_alternate_push_pull(gpioe_crh);
+        d10.into_alternate_push_pull(gpioe_crh);
+        d11.into_alternate_push_pull(gpioe_crh);
+        d12.into_alternate_push_pull(gpioe_crh);
+        d13.into_alternate_push_pull(gpiod_crh);
+        d14.into_alternate_push_pull(gpiod_crh);
+        d15.into_alternate_push_pull(gpiod_crh);
+
+        unsafe {
+            fsmc.bcr1.write(|w| w
+                // Enable NOR Bank 0
+                .mbken().set_bit()
+                // data width: 16 bits
+                .mwid().bits(1)
+                // write: enable
+                .wren().set_bit()
+            );
+            fsmc.btr1.write(|w| w
+                // Access Mode A
+                .accmod().bits(0)
+                // Address setup time: not needed.
+                .addset().bits(0)
+                // Data setup and hold time.
+                // (2+1)/120MHz = 25ns. Should be plenty enough.
+                // Typically, 10ns is the minimum.
+                .datast().bits(2)
+                .datlat().bits(2)
+            );
+        }
+
+        Self { reset, backlight }
+    }
 
     pub fn write_cmd(&mut self, v: u16) {
         unsafe { Self::TFT_CMD.write_volatile(v); }
@@ -184,7 +281,7 @@ impl DrawTarget for Display {
                 // Calculate the index in the framebuffer.
                 let x = x as u16;
                 let y = y as u16;
-                self.start_drawing((x,y), (x,y));
+                self.start_drawing((x,y), (x+1,y+1));
                 self.write_data(RawU16::from(color).into_inner());
             }
         }
@@ -199,12 +296,15 @@ impl DrawTarget for Display {
         // Clamp area to drawable part of the display target
         let drawable_area = area.intersection(&self.bounding_box());
 
+            const W: i32 = Display::WIDTH as i32;
+            const H: i32 = Display::HEIGHT as i32;
+
         // Check that there are visible pixels to be drawn
         if drawable_area.size != Size::zero() {
             let start = drawable_area.top_left;
             let end = drawable_area.bottom_right().unwrap();
             self.start_drawing((start.x as u16, start.y as u16),
-                               (end.x as u16,   end.y as u16));
+                               ((end.x+1) as u16, (end.y+1) as u16));
 
             area.points()
                 .zip(colors)
