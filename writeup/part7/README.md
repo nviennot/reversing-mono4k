@@ -4,6 +4,8 @@ Part 7: Detecting touches on the display, and improving on the original firmware
 In the [previous part](../part6/README.md), we were able to display images on
 the touch-screen. It's a natural next step to detect touches on the display.
 
+![screen1.jpg](screen1.jpg)
+
 To locate the code in the firmware disassembly that interface with the
 touch detection device, the easiest is to identify the pins connected with it.
 I've identified two pins connected to the display connector that are not used
@@ -80,6 +82,55 @@ Here's how it looks when rejecting points with little pressure:
 
 Much better! It's not the greatest touch screen in the world, but at least it's
 accurate.
+
+## Identifying the touch screen controller and improvements
+
+Based on the protocol, [Marijn](https://github.com/marijnvdwerf) [correctly
+identified the touch screen controller](https://github.com/nviennot/reversing-mono4k/issues/3) as an `XPT2046`.
+
+Few days later, I took a photo of the controller seen under the ribbon cable:
+
+![screen2.jpg](screen2.jpg)
+
+He got it right! Impressive!
+
+Here's the datasheet of the [`XPT2046`](/datasheet/XPT2046.pdf), which is
+essentially a clone of the [`ADS7846`](/datasheet/ads7846.pdf), originally made
+by the [Burr-Brown](https://en.wikipedia.org/wiki/Burr-Brown_Corporation)
+corporation, acquired by Texas Instruments in 2000.
+
+This provides visibility in what we were doing. The control bits are described:
+
+![tables.png](tables.png)
+
+The command begins with a start bit `S = 1`, then three bits that constitute the
+actual command, then one bit to select 12 or 8-bit sampling, one bit to
+configure how the ADC is configured (0 is always good for us), and lastly two
+bits to configure power.
+
+Regarding the `0x90 = 0b10010000` and `0xD0 = 0b11010000`, clearly we see that
+it corresponds to the `001` and `101` commands from table II, measuring X and Y
+positions with 12-bit precision (mode = 0). (X and Y are swapped in our
+situation).
+
+The command I used to detect pressure `0x16 = 0b00010110` doesn't exist, as it
+doesn't have a start bit. It worked because the first high bit signals the
+start of the command (unlike the SPI protocol, for which the chip select pin
+going down is the indication), and so the effective command I sent was
+`10110000`. This measures the Z1 position in 12 bits precision.
+
+![pressure.png](pressure.png)
+
+Okay, so we were vaguely doing the (3) equation, but we missed the offset
+incurred by the X position (X and Y are swapped in our application).
+
+We can improve the touchscreen accuracy with the following:
+* Leave the device powered on while sampling touch values, apparently that makes
+  the VREF internal generator more stable, giving us better accuracy (which is
+  what the differential reference mode uses)
+* Leave the CS pin down during the entire sampling of data
+* Do robust pressure measurements
+
 
 The source code detecting touches can be found in
 [/src/src/drivers/touch_screen.rs](/src/src/drivers/touch_screen.rs).
