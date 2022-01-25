@@ -11,7 +11,7 @@ use spi_memory::{
     series25::Flash,
 };
 
-use crate::debug;
+use crate::trace;
 
 pub struct TouchScreen {
     pub cs: PC7<Output<PushPull>>,

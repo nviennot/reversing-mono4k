@@ -1,9 +1,12 @@
 # Connect to openocd
-target extended-remote :3333
+#target extended-remote :3333
+target extended-remote :2331
 
 # Enable OpenOCD's semihosting capability
-monitor arm semihosting enable
+#monitor arm semihosting enable
 #monitor arm semihosting_fileio enable
+monitor semihosting enable
+
 
 # Set backtrace limit to not have infinite backtrace loops
 set backtrace limit 32

@@ -9,6 +9,8 @@ load
 
 # Resume execution
 # continue
-monitor resume
-detach
+monitor reset
+monitor go
+#monitor resume
+#detach
 quit

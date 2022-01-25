@@ -5,26 +5,15 @@
 
 mod drivers;
 
+use rtt_target::{rtt_init_print, rprintln};
 
 pub mod macros {
-    macro_rules! debug {
-        () => {
-            cortex_m_semihosting::hprintln!("").unwrap();
-        };
-        ($s:expr) => {
-            cortex_m_semihosting::hprintln!($s).unwrap();
-        };
-        ($s:expr, $($tt:tt)*) => {
-            {
-                use core::fmt::Write;
-
-                let mut string = arrayvec::ArrayString::<1024>::new();
-                let _ = write!(&mut string, concat!($s, "\n"), $($tt)*);
-                cortex_m_semihosting::hprint!(&string).unwrap();
-            }
-        };
+    macro_rules! trace {
+        ($($tt:tt)*) => {
+            rtt_target::rprintln!($($tt)*);
+        }
     }
-    pub(crate) use debug;
+    pub(crate) use trace;
 }
 
 use cortex_m_rt::entry;
@@ -33,7 +22,7 @@ use cortex_m_rt::entry;
 // use panic_halt as _; // you can put a breakpoint on `rust_begin_unwind` to catch panics
 // use panic_abort as _; // requires nightly
 // use panic_itm as _; // logs messages over ITM; requires ITM support
-use panic_semihosting as _; // logs messages to the host stderr; requires a debugger
+//use panic_semihosting as _; // logs messages to the host stderr; requires a debugger
 
 use stm32f1xx_hal::{
     prelude::*,
@@ -69,7 +58,7 @@ use embedded_hal::digital::v2::OutputPin;
 
 use drivers::clock;
 
-use macros::debug;
+use macros::trace;
 
 use core::{cell::RefCell, time::Duration, mem::MaybeUninit};
 use cortex_m::interrupt::Mutex;
@@ -164,8 +153,10 @@ struct TouchGlobal {
 static mut TOUCH: Option<TouchGlobal> = None;
 
 fn main() -> ! {
+    rtt_init_print!();
+
     let start = cortex_m_rt::heap_start() as usize;
-    let size = 70*1024;
+    let size = 10*1024;
     unsafe { ALLOCATOR.init(start, size) }
 
 
@@ -247,7 +238,7 @@ fn main() -> ! {
 
         {
             let mut label = Label::new(&mut screen).unwrap();
-            label.set_text(CString::new("Turbo Resin v0.1.0").unwrap().as_c_str()).unwrap();
+            label.set_text(CString::new("Turbo Resin v0.1.1").unwrap().as_c_str()).unwrap();
             label.set_align(&mut screen, Align::InBottomRight, -5, -5).unwrap();
         }
 
@@ -322,6 +313,7 @@ fn main() -> ! {
                 let value = value*value*value;
 
                 let value = value * 30.0;
+
                 stepper.modify(|s| s.set_max_speed(Some(value.mm())));
             }).unwrap();
 
@@ -358,6 +350,9 @@ fn main() -> ! {
                 btn_down_active = false;
                 btn_up_active = false;
 
+                // turn off warning. Weird.
+                if btn_down_active || btn_up_active {}
+
                 unsafe {
                     lvgl_sys::lv_btn_set_state(btn_up.raw().unwrap().as_mut(),
                         lvgl_sys::LV_BTN_STATE_RELEASED as u8);
@@ -382,7 +377,13 @@ use alloc_cortex_m::CortexMHeap;
 static ALLOCATOR: CortexMHeap = CortexMHeap::empty();
 
 #[alloc_error_handler]
-fn oom(_: core::alloc::Layout) -> ! {
-    debug!("OOM");
-    loop {}
+fn oom(l: core::alloc::Layout) -> ! {
+    panic!("Out of memory. Failed to allocating {} bytes", l.size());
+}
+
+#[inline(never)]
+#[panic_handler]
+fn panic(info: &core::panic::PanicInfo) -> ! {
+    trace!("{}", info);
+    loop {} // You might need a compiler fence in here.
 }

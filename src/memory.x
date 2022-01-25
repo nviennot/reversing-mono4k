@@ -6,6 +6,7 @@ MEMORY
    * Let's ignore the second bank for now.
    */
   FLASH : ORIGIN = 0x08000000, LENGTH = 256K
+  /*FLASH_RODATA : ORIGIN = 0x08000000, LENGTH = 256K*/
   RAM : ORIGIN = 0x20000000, LENGTH = 96K
 }
 
@@ -34,3 +35,31 @@ MEMORY
      } > RAM2
    } INSERT AFTER .bss;
 */
+
+
+
+SECTIONS {
+  /* 0x150 is the end of the not yet defined vector_table */
+  .lvgl.text ORIGIN(FLASH) + 0x150:
+  {
+    *liblvgl*:*(.text .text.*);
+  } > FLASH
+
+  .lvgl.rodata :
+  {
+    *liblvgl*:*(.rodata .rodata.*);
+  } > FLASH
+
+  .libs.text :
+  {
+    *lib*:*(.text .text.*);
+  } > FLASH
+
+  .libs.rodata :
+  {
+    *lib*:*(.rodata .rodata.*);
+  } > FLASH
+}
+
+/* Starts the main code section after the libraries */
+_stext = ADDR(.libs.rodata) + SIZEOF(.libs.rodata);

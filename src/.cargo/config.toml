@@ -19,7 +19,7 @@ rustflags = [
 
   # if you run into problems with LLD switch to the GNU linker by commenting out
   # this line
-  # "-C", "linker=arm-none-eabi-ld",
+  "-C", "linker=arm-none-eabi-ld",
 
   # if you need to link to pre-compiled C libraries provided by a C toolchain
   # use GCC as the linker by commenting out both lines above and then
