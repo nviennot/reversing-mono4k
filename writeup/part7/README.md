@@ -85,7 +85,7 @@ accurate.
 
 ## Identifying the touch screen controller and improvements
 
-Based on the protocol, [Marijn](https://github.com/marijnvdwerf) [correctly
+Based on the protocol, [Marijn correctly
 identified the touch screen controller](https://github.com/nviennot/reversing-mono4k/issues/3) as an `XPT2046`.
 
 Few days later, I took a photo of the controller seen under the ribbon cable:
