@@ -1,16 +1,14 @@
 use stm32f1xx_hal::{
-    prelude::*,
-    //pac::Peripherals,
-    //rcc::{Clocks, APB1},
     pac::SPI2,
     gpio::*,
     gpio::gpiob::*,
-    spi::*, rcc::Clocks,
-    spi::{self, *},
+    rcc::Clocks,
+    spi::*,
+    spi,
 };
 
 use spi_memory::{
-    prelude::*,
+    //prelude::*,
     series25::Flash,
 };
 
@@ -31,8 +29,6 @@ pub struct ExtFlash(
         PB12<Output<PushPull>,
     >>
 );
-
-const FLASH_SIZE: u32 = 16*1024*1024; // 16MB
 
 // We are reading from the SPI flash at 1.16 MB/s
 // We should be getting 3x the speed
@@ -67,7 +63,9 @@ impl ExtFlash {
         ExtFlash(Flash::init(spi, cs).unwrap())
     }
 
+    /*
     pub fn dump(&mut self) {
+        use crate::consts::*;
         use crate::drivers::hio::{open, nr::open};
 
         const BUFFER_SIZE: usize = 32*1024; // 32KB
@@ -75,11 +73,12 @@ impl ExtFlash {
 
         let mut file = open("ext.bin\0", open::RW_TRUNC_BINARY).unwrap();
 
-        for addr in (0..FLASH_SIZE).step_by(BUFFER_SIZE) {
+        for addr in (0..EXT_FLASH_SIZE).step_by(BUFFER_SIZE) {
             self.0.read(addr, &mut buf).unwrap();
             file.write_all(&buf).unwrap();
         }
 
         cortex_m_semihosting::hprintln!("DONE").unwrap();
     }
+    */
 }

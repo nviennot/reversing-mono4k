@@ -45,17 +45,17 @@ SECTIONS {
     *liblvgl*:*(.text .text.*);
   } > FLASH
 
-  .lvgl.rodata :
+  .lvgl.rodata ALIGN(4) :
   {
     *liblvgl*:*(.rodata .rodata.*);
   } > FLASH
 
-  .libs.text :
+  .libs.text ALIGN(4) :
   {
     *lib*:*(.text .text.*);
   } > FLASH
 
-  .libs.rodata :
+  .libs.rodata ALIGN(4) :
   {
     *lib*:*(.rodata .rodata.*);
   } > FLASH

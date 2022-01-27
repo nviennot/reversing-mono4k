@@ -14,7 +14,6 @@ use stm32f1xx_hal::{
 
 pub fn setup_clock_120m_hxtal(_rcc: stm32f1xx_hal::pac::RCC) -> Clocks {
     // Transcribed from the GD32F30x Firmware Library
-    // Some of the registers in here are not in the datasheet.
 
     unsafe {
         let rcu = &*RCU::ptr();
@@ -114,4 +113,11 @@ pub fn setup_clock_120m_hxtal(_rcc: stm32f1xx_hal::pac::RCC) -> Clocks {
 
         core::mem::transmute(clocks)
     }
+}
+
+// 3 clock cycles is 25ns at 120MHz
+#[inline(always)]
+pub fn delay_ns(duration_ns: u32) {
+    let cycles = (3 * duration_ns) / 25;
+    cortex_m::asm::delay(cycles);
 }

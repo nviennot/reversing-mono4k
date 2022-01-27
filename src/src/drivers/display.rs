@@ -2,7 +2,6 @@ use stm32f1xx_hal::{
     prelude::*,
     gpio::*,
     gpio::gpioa::*,
-    gpio::gpiob::*,
     gpio::gpioc::*,
     gpio::gpiod::*,
     gpio::gpioe::*,
@@ -12,9 +11,7 @@ use stm32f1xx_hal::{
     pac::{self, FSMC},
 };
 
-use spi_memory::{
-    prelude::*,
-};
+use crate::consts::display::*;
 
 pub struct Display {
     pub reset: PC6<Output<PushPull>>,
@@ -27,13 +24,13 @@ impl Display {
     // 0x00020000 = 1 << (16 + 1) (not sure why the +1).
     const TFT_CMD:  *mut u16 = 0x6000_0000u32 as *mut u16;
     const TFT_DATA: *mut u16 = 0x6002_0000u32 as *mut u16;
-    pub const WIDTH: u16 = 320;
-    pub const HEIGHT: u16 = 240;
 
+    /*
     pub const FULL_SCREEN: Rectangle = Rectangle::new(
         Point::new(0,0),
         Size::new(Self::WIDTH as u32, Self::HEIGHT as u32)
     );
+    */
 
     pub fn new(
         reset: PC6<Input<Floating>>,
@@ -139,6 +136,7 @@ impl Display {
     }
 
     pub fn init(&mut self, delay: &mut Delay) {
+        // This sequence is mostly taken from the original firmware
         delay.delay_ms(10u8);
         self.reset.set_high();
         delay.delay_ms(10u8);
@@ -209,18 +207,19 @@ impl Display {
     }
 
     pub fn start_drawing_full_screen(&mut self) {
-        self.start_drawing((0,0), (Self::WIDTH, Self::HEIGHT));
+        self.start_drawing((0,0), (WIDTH, HEIGHT));
     }
 
     pub fn fill_screen(&mut self, color: u16) {
         self.start_drawing_full_screen();
-        for _ in 0..Self::WIDTH {
-            for _ in 0..Self::HEIGHT {
+        for _ in 0..WIDTH {
+            for _ in 0..HEIGHT {
                 self.write_data(color);
             }
         }
     }
 
+    /*
     pub fn draw_background_image(&mut self, ext_flash: &mut ExtFlash, img_index: u8, area: &Rectangle) {
         let area = area.intersection(&self.bounding_box());
         if area.is_zero_sized() {
@@ -252,6 +251,7 @@ impl Display {
             }
         }
     }
+    */
 }
 
 
@@ -264,8 +264,6 @@ use embedded_graphics::{
     primitives::Rectangle,
 };
 
-use super::ext_flash::ExtFlash;
-
 impl DrawTarget for Display {
     type Color = Rgb565;
     type Error = core::convert::Infallible;
@@ -275,10 +273,9 @@ impl DrawTarget for Display {
         I: IntoIterator<Item = Pixel<Self::Color>>,
     {
         for Pixel(coord, color) in pixels.into_iter() {
-            const W: i32 = Display::WIDTH as i32;
-            const H: i32 = Display::HEIGHT as i32;
+            const W: i32 = WIDTH as i32;
+            const H: i32 = HEIGHT as i32;
             if let Ok((x @ 0..=W, y @ 0..=H)) = coord.try_into() {
-                // Calculate the index in the framebuffer.
                 let x = x as u16;
                 let y = y as u16;
                 self.start_drawing((x,y), (x+1,y+1));
@@ -295,9 +292,6 @@ impl DrawTarget for Display {
     {
         // Clamp area to drawable part of the display target
         let drawable_area = area.intersection(&self.bounding_box());
-
-            const W: i32 = Display::WIDTH as i32;
-            const H: i32 = Display::HEIGHT as i32;
 
         // Check that there are visible pixels to be drawn
         if drawable_area.size != Size::zero() {
@@ -317,6 +311,6 @@ impl DrawTarget for Display {
 
 impl OriginDimensions for Display {
     fn size(&self) -> Size {
-        Size::new(Self::WIDTH.into(), Self::HEIGHT.into())
+        Size::new(WIDTH.into(), HEIGHT.into())
     }
 }

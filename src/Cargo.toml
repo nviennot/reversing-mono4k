@@ -9,7 +9,7 @@ version = "0.1.0"
 embedded-hal = "0.2.3"
 cortex-m = "0.7"
 cortex-m-rt = "0.7"
-cortex-m-semihosting = "0.3"
+#cortex-m-semihosting = "0.3"
 #panic-semihosting = "0.5"
 #panic-halt = "0.2"
 spi-memory = "0.2"
@@ -28,11 +28,17 @@ heapless = "0.5"
 cstr_core = "0.2"
 alloc-cortex-m = "0.4"
 rtt-target = { version = "0.3", features = ["cortex-m"]}
+cortex-m-rtic = "1.0"
+systick-monotonic = "1.0"
+embedded-time = "0.12"
+#fugit = "0.3"
 
-[patch.crates-io]
-cortex-m-rt = { path = '../repos/cortex-m/cortex-m-rt' }
-cortex-m = { path = '../repos/cortex-m' }
-alloc-cortex-m = { path = '../repos/alloc-cortex-m' }
+
+
+#[patch.crates-io]
+#cortex-m-rt = { path = '../repos/cortex-m/cortex-m-rt' }
+#cortex-m = { path = '../repos/cortex-m' }
+#alloc-cortex-m = { path = '../repos/alloc-cortex-m' }
 
 [dependencies.gd32f3]
 path = "../repos/gd32-rs/gd32f3"

@@ -1,192 +1,130 @@
 #![no_std]
 #![no_main]
 #![feature(alloc_error_handler)]
+#![feature(int_abs_diff)]
 #![allow(unused_imports, dead_code, unused_variables, unused_macros, unreachable_code)]
 
 mod drivers;
+mod init;
+mod consts;
 
-use rtt_target::{rtt_init_print, rprintln};
+use stm32f1xx_hal::pac::Interrupt;
+use consts::system::*;
+use drivers::{
+    touch_screen::{TouchScreenResult, TouchEvent},
+    display::Display,
+};
+use init::{Systick, Machine, prelude::*};
 
-pub mod macros {
-    macro_rules! trace {
+pub(crate) use runtime::debug;
+
+mod runtime {
+    use super::*;
+
+    #[global_allocator]
+    static ALLOCATOR: alloc_cortex_m::CortexMHeap = alloc_cortex_m::CortexMHeap::empty();
+
+    pub fn init_heap() {
+        let start = cortex_m_rt::heap_start() as usize;
+        unsafe { ALLOCATOR.init(start, HEAP_SIZE) }
+    }
+
+    #[alloc_error_handler]
+    fn oom(l: core::alloc::Layout) -> ! {
+        panic!("Out of memory. Failed to allocate {} bytes", l.size());
+    }
+
+    #[inline(never)]
+    #[panic_handler]
+    fn panic(info: &core::panic::PanicInfo) -> ! {
+        debug!("{}", info);
+        loop {}
+    }
+
+    macro_rules! debug {
         ($($tt:tt)*) => {
             rtt_target::rprintln!($($tt)*);
         }
     }
-    pub(crate) use trace;
+    pub(crate) use debug;
 }
 
-use cortex_m_rt::entry;
+#[rtic::app(
+    device = stm32f1xx_hal::stm32, peripherals = true,
+    // Picked random interrupts that we'll never use. RTIC will use this to schedule tasks.
+    dispatchers=[CAN_RX1, CAN_SCE, CAN2_RX0, CAN2_RX1]
+)]
+mod app {
 
-// pick a panicking behavior
-// use panic_halt as _; // you can put a breakpoint on `rust_begin_unwind` to catch panics
-// use panic_abort as _; // requires nightly
-// use panic_itm as _; // logs messages over ITM; requires ITM support
-//use panic_semihosting as _; // logs messages to the host stderr; requires a debugger
+    use super::*;
 
-use stm32f1xx_hal::{
-    prelude::*,
-    pac::{Peripherals, self, interrupt, Interrupt, TIM7},
-    gpio::PinState,
-    spi::{self, *},
-    delay::Delay,
-    rcc::Clocks,
-    timer::{Timer, Tim2NoRemap, Event, CountDownTimer},
-    pwm::Channel,
+    #[monotonic(binds = SysTick, default = true)]
+    type MonotonicClock = Systick;
 
-};
-
-use drivers::{
-    ext_flash::ExtFlash,
-    display::Display,
-    touch_screen::TouchScreen,
-    stepper::{prelude::*, Direction, Stepper, InterruptibleStepper},
-};
-
-use spi_memory::series25::Flash;
-
-struct Machine {
-    ext_flash: ExtFlash,
-    display: Display,
-    touch_screen: TouchScreen,
-    stepper: InterruptibleStepper,
-    delay: Delay,
-}
-
-use embedded_hal::digital::v2::OutputPin;
-
-
-use drivers::clock;
-
-use macros::trace;
-
-use core::{cell::RefCell, time::Duration, mem::MaybeUninit};
-use cortex_m::interrupt::Mutex;
-
-impl Machine {
-    pub fn init() -> Self {
-        // Initialize the device to run at 48Mhz using the 8Mhz crystal on
-        // the PCB instead of the internal oscillator.
-        let cp = cortex_m::Peripherals::take().unwrap();
-        let dp = Peripherals::take().unwrap();
-
-        let mut gpioa = dp.GPIOA.split();
-        let mut gpiob = dp.GPIOB.split();
-        let mut gpioc = dp.GPIOC.split();
-        let mut gpiod = dp.GPIOD.split();
-        let mut gpioe = dp.GPIOE.split();
-
-        let mut afio = dp.AFIO.constrain();
-
-
-        // Note, we can't use separate functions, because we are consuming (as
-        // in taking ownership of) the device peripherals struct, and so we
-        // cannot pass it as arguments to a function, as it would only be
-        // partially valid.
-
-        //--------------------------
-        //  Clock configuration
-        //--------------------------
-
-        // Can't use the HAL. The GD32 is too different.
-        let clocks = clock::setup_clock_120m_hxtal(dp.RCC);
-        let mut delay = Delay::new(cp.SYST, clocks);
-        //init_systick(&clocks, cp.SYST);
-
-        //--------------------------
-        //  External flash
-        //--------------------------
-
-        let ext_flash = ExtFlash::new(
-            gpiob.pb12, gpiob.pb13, gpiob.pb14, gpiob.pb15,
-            dp.SPI2,
-            &clocks, &mut gpiob.crh
-        );
-
-        //--------------------------
-        //  TFT display
-        //--------------------------
-
-        //let _notsure = gpioa.pa6.into_push_pull_output(&mut gpioa.crl);
-        let mut display = Display::new(
-            gpioc.pc6, gpioa.pa10,
-            gpiod.pd4, gpiod.pd5, gpiod.pd7, gpiod.pd11,
-            gpiod.pd14, gpiod.pd15, gpiod.pd0, gpiod.pd1, gpioe.pe7, gpioe.pe8,
-            gpioe.pe9, gpioe.pe10, gpioe.pe11, gpioe.pe12, gpioe.pe13,
-            gpioe.pe14, gpioe.pe15, gpiod.pd8, gpiod.pd9, gpiod.pd10,
-            dp.FSMC,
-            &mut gpioa.crh, &mut gpioc.crl, &mut gpiod.crl, &mut gpiod.crh, &mut gpioe.crl, &mut gpioe.crh,
-        );
-        display.init(&mut delay);
-
-        //--------------------------
-        //  Touch screen
-        //--------------------------
-
-        let touch_screen = TouchScreen::new(
-            gpioc.pc7, gpioc.pc8, gpioc.pc9, gpioa.pa8, gpioa.pa9,
-            &mut gpioa.crh, &mut gpioc.crl, &mut gpioc.crh,
-        );
-
-        //--------------------------
-        //  Stepper motor (Z-axis)
-        //--------------------------
-
-        let stepper = Stepper::new(
-            gpioe.pe4, gpioe.pe5, gpioe.pe6,
-            gpioc.pc3, gpioc.pc0,
-            gpioc.pc1, gpioc.pc2,
-            gpioa.pa3,
-            Timer::new(dp.TIM2, &clocks), Timer::new(dp.TIM7, &clocks),
-            &mut gpioa.crl, &mut gpioc.crl, &mut gpioe.crl, &mut afio.mapr,
-        ).interruptible();
-
-        Self { ext_flash, display, touch_screen, stepper, delay }
-    }
-}
-
-struct TouchGlobal {
-    touch_screen: TouchScreen,
-    delay: Delay,
-}
-
-static mut TOUCH: Option<TouchGlobal> = None;
-
-fn main() -> ! {
-    rtt_init_print!();
-
-    let start = cortex_m_rt::heap_start() as usize;
-    let size = 10*1024;
-    unsafe { ALLOCATOR.init(start, size) }
-
-
-    let machine = Machine::init();
-
-    let mut display = machine.display;
-    let ext_flash = machine.ext_flash;
-    let delay = machine.delay;
-    let mut stepper = machine.stepper;
-    let touch_screen = machine.touch_screen;
-
-    unsafe {
-        let delay = core::mem::transmute_copy(&delay);
-        TOUCH = Some(TouchGlobal { touch_screen, delay });
+    /* resources shared across RTIC tasks */
+    #[shared]
+    struct Shared {
+        stepper: drivers::stepper::Stepper,
+        last_touch_event: Option<TouchEvent>,
+        touch_screen: drivers::touch_screen::TouchScreen,
     }
 
-    //machine.touch_screen.demo();
-
-    //display.draw_background_image(&mut ext_flash, 15, &Display::FULL_SCREEN);
-    display.backlight.set_high();
-
-    /*
-    for position in [(-100.0).mm(), 100.0.mm()] {
-        machine.stepper.modify(|s| { s.set_target_relative(position); });
-        machine.stepper.wait_for_completion();
-        delay.delay_ms(1000u32);
+    /* resources local to specific RTIC tasks */
+    #[local]
+    struct Local {
+        display: drivers::display::Display,
     }
-    */
 
-    {
+    #[init]
+    fn init(ctx: init::Context) -> (Shared, Local, init::Monotonics) {
+        rtt_target::rtt_init_print!();
+        runtime::init_heap();
+
+        let machine = Machine::new(ctx.core, ctx.device);
+
+        let mut display = machine.display;
+        let systick = machine.systick;
+        let stepper = machine.stepper;
+        let touch_screen = machine.touch_screen;
+        /*
+        let ext_flash = machine.ext_flash;
+        let delay = machine.delay;
+        let mut stepper = machine.stepper;
+        */
+
+        //touch_task::spawn().unwrap();
+
+        /*
+        struct TouchGlobal {
+            touch_screen: TouchScreen,
+            delay: Delay,
+        }
+
+        static mut TOUCH: Option<TouchGlobal> = None;
+        unsafe {
+            let delay = core::mem::transmute_copy(&delay);
+            TOUCH = Some(TouchGlobal { touch_screen, delay });
+        }
+        */
+
+        display.backlight.set_high();
+        let last_touch_event = None;
+
+        debug!("Init complete");
+
+        (
+            Shared { stepper, touch_screen, last_touch_event },
+            Local { display },
+            init::Monotonics(systick),
+        )
+    }
+
+    #[idle(local = [], shared = [stepper])]
+    fn idle(_cx: idle::Context) -> ! {
+        loop {}
+        /*
+        use drivers::stepper::prelude::*;
+
         use core::fmt::Write;
         use cstr_core::CString;
 
@@ -194,18 +132,27 @@ fn main() -> ! {
         use lvgl::style::*;
         use lvgl::widgets::*;
 
-        use embedded_graphics::{
-            prelude::*,
-            pixelcolor::{Rgb565, raw::RawU16},
-            primitives::Rectangle,
-        };
-
         let mut ui = UI::init().unwrap();
+        let display = *cx.local.display;
+        let touch_screen = *cx.local.touch_screen;
+
         ui.disp_drv_register(display).unwrap();
         let mut screen = ui.scr_act().unwrap();
 
+        struct TouchGlobal {
+            touch_screen: TouchScreen,
+        }
+
+        static mut TOUCH: Option<TouchGlobal> = None;
+        unsafe {
+            //let delay = core::mem::transmute_copy(&delay);
+            TOUCH = Some(TouchGlobal { touch_screen });
+        }
+
+
         unsafe extern "C" fn input_read_cb(drv: *mut lvgl_sys::lv_indev_drv_t, data: *mut lvgl_sys::lv_indev_data_t) -> bool {
             let t = TOUCH.as_mut().unwrap();
+
 
             if let Some((x,y)) = t.touch_screen.read_x_y(&mut t.delay) {
                 (*data).point.x = x as i16;
@@ -363,27 +310,50 @@ fn main() -> ! {
 
             ui.tick_inc(Duration::from_millis(20));
         }
+        */
+    }
+
+
+    #[task(priority = 5, binds = TIM7, shared = [stepper])]
+    fn stepper_interrupt(mut ctx: stepper_interrupt::Context) {
+        ctx.shared.stepper.lock(|s| s.on_interrupt());
+    }
+
+    #[task(priority = 2, binds = EXTI9_5, shared = [touch_screen])]
+    fn touch_screen_pen_down_interrupt(mut ctx: touch_screen_pen_down_interrupt::Context) {
+        use TouchScreenResult::*;
+        match ctx.shared.touch_screen.lock(|ts| { ts.on_pen_down_interrupt() }) {
+            DelayMs(delay_ms) => {
+                cortex_m::peripheral::NVIC::mask(Interrupt::EXTI9_5);
+                touch_screen_sampling_task::spawn_after((delay_ms as u64).millis()).unwrap();
+            }
+            Done(None) => {},
+            Done(Some(_)) => unreachable!(),
+        }
+    }
+
+    #[task(priority = 2, local = [display], shared = [touch_screen, last_touch_event])]
+    fn touch_screen_sampling_task(mut ctx: touch_screen_sampling_task::Context) {
+        use TouchScreenResult::*;
+        match ctx.shared.touch_screen.lock(|ts| ts.on_delay_expired()) {
+            DelayMs(delay_ms) => {
+                touch_screen_sampling_task::spawn_after((delay_ms as u64).millis()).unwrap();
+            },
+            Done(touch_event) => {
+                draw_touch_event(&mut ctx.local.display, touch_event.as_ref());
+                ctx.shared.last_touch_event.lock(|t| *t = touch_event);
+                unsafe { cortex_m::peripheral::NVIC::unmask(Interrupt::EXTI9_5); }
+            },
+        }
     }
 }
 
-// For some reason, having #[entry] on main() makes auto-completion a bit broken.
-// Adding a function call fixes it.
-#[entry]
-fn _main() -> ! { main() }
+fn draw_touch_event(display: &mut Display, touch_event: Option<&TouchEvent>) {
+    use embedded_graphics::{prelude::*, primitives::{Circle, PrimitiveStyle}, pixelcolor::Rgb565};
 
-use alloc_cortex_m::CortexMHeap;
-
-#[global_allocator]
-static ALLOCATOR: CortexMHeap = CortexMHeap::empty();
-
-#[alloc_error_handler]
-fn oom(l: core::alloc::Layout) -> ! {
-    panic!("Out of memory. Failed to allocating {} bytes", l.size());
-}
-
-#[inline(never)]
-#[panic_handler]
-fn panic(info: &core::panic::PanicInfo) -> ! {
-    trace!("{}", info);
-    loop {} // You might need a compiler fence in here.
+    if let Some(touch_event) = touch_event {
+        Circle::new(Point::new(touch_event.x as i32, touch_event.y as i32), 3)
+            .into_styled(PrimitiveStyle::with_fill(Rgb565::GREEN))
+            .draw(display).unwrap();
+    }
 }

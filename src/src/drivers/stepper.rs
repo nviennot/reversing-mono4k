@@ -1,5 +1,4 @@
 
-use cortex_m::peripheral::NVIC;
 use stm32f1xx_hal::{
     prelude::*,
     gpio::*,
@@ -8,15 +7,12 @@ use stm32f1xx_hal::{
     gpio::gpioe::*,
     timer::{Timer, Tim2NoRemap, Event, CountDownTimer},
     afio::MAPR,
-    pac::{Peripherals, self, interrupt, Interrupt, TIM2, TIM7},
-    pwm::Channel, delay::Delay,
+    pac::{TIM2, TIM7},
+    pwm::Channel,
 };
 
 use ramp_maker::MotionProfile;
-
-const DRIVER_MICROSTEPS: u32 = 16;
-const FULL_STEPS_PER_REVOLUTION: u32 = 200;
-const SCREW_THREAD_PITCH_MM: f32 = 2.0;
+use crate::consts::stepper::*;
 const STEPS_PER_MM: f32 = (DRIVER_MICROSTEPS * FULL_STEPS_PER_REVOLUTION) as f32 / SCREW_THREAD_PITCH_MM;
 
 #[derive(PartialEq, PartialOrd, Clone, Copy)]
@@ -62,9 +58,6 @@ pub struct Stepper {
 }
 
 impl Stepper {
-    const DEFAULT_MAX_SPEED: f32 = 30.0; // mm/s
-    const MAX_ACCELERATION: f32 = 25.0; // mm/s^2
-
     pub fn new(
         dir: PE4<Input<Floating>>,
         step: PE5<Input<Floating>>,
@@ -138,19 +131,19 @@ impl Stepper {
         pwm.set_duty(Channel::C4, (pwm.get_max_duty() * 8) / 10);
         pwm.enable(Channel::C4);
 
-        let profile = ramp_maker::Trapezoidal::new(Self::MAX_ACCELERATION.mm().0 as f32);
+        let profile = ramp_maker::Trapezoidal::new(MAX_ACCELERATION.mm().0 as f32);
 
         // Value doesn't matter here, it will be re-initialized later.
         let step_timer = step_timer.start_count_down(10.hz());
 
         let current_position = Steps(0);
         let target = Steps(0);
-        let max_speed = Self::DEFAULT_MAX_SPEED.mm();
+        let max_speed = DEFAULT_MAX_SPEED.mm();
 
         Self { step_timer, step, dir, enable, profile, current_position, max_speed, target }
     }
 
-    fn interrupt_tim7(&mut self) {
+    pub fn on_interrupt(&mut self) {
         let _ = self.step_timer.wait(); // clears the interrupt flag
         self.do_step();
 
@@ -201,7 +194,7 @@ impl Stepper {
 
     // If max_speed is None, it goes back to default.
     pub fn set_max_speed(&mut self, max_speed: Option<Steps>) {
-        self.max_speed = max_speed.unwrap_or(Self::DEFAULT_MAX_SPEED.mm());
+        self.max_speed = max_speed.unwrap_or(DEFAULT_MAX_SPEED.mm());
 
         let mut steps = self.target.0 - self.current_position.0;
         if steps < 0 { steps = -steps; }
@@ -232,7 +225,7 @@ impl Stepper {
     }
 
     pub fn stop(&mut self) {
-        self.profile = ramp_maker::Trapezoidal::new(Self::MAX_ACCELERATION.mm().0 as f32);
+        self.profile = ramp_maker::Trapezoidal::new(MAX_ACCELERATION.mm().0 as f32);
         self.target = self.current_position;
 
         self.step_timer.unlisten(Event::Update);
@@ -244,13 +237,15 @@ impl Stepper {
         self.enable.is_set_low()
     }
 
+    /*
     pub fn interruptible(self) -> InterruptibleStepper {
         let mut s = InterruptibleStepper::new(self);
         s.enable_interrupts();
         s
-    }
+    } */
 }
 
+/*
 impl InterruptibleStepper {
     pub fn wait_for_completion(&self) {
         while !self.access(|s| { s.is_idle() }) { }
@@ -304,3 +299,5 @@ fn TIM7() {
     let stepper = unsafe { INSTANCE.as_mut().unwrap() };
     stepper.interrupt_tim7();
 }
+
+*/
