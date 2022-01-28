@@ -681,6 +681,7 @@ dependencies = [
  "bindgen",
  "cc",
  "cty",
+ "glob",
 ]
 
 [[package]]

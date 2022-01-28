@@ -5,16 +5,16 @@
 #![allow(unused_imports, dead_code, unused_variables, unused_macros, unreachable_code)]
 
 mod drivers;
-mod init;
 mod consts;
+mod ui;
 
 use stm32f1xx_hal::pac::Interrupt;
 use consts::system::*;
 use drivers::{
+    init::{Systick, Machine, prelude::*},
     touch_screen::{TouchScreenResult, TouchEvent},
     display::Display,
 };
-use init::{Systick, Machine, prelude::*};
 
 pub(crate) use runtime::debug;
 
