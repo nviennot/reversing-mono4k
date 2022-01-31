@@ -29,6 +29,7 @@ use core::mem::MaybeUninit;
 mod runtime {
     use super::*;
 
+    /*
     #[global_allocator]
     static ALLOCATOR: alloc_cortex_m::CortexMHeap = alloc_cortex_m::CortexMHeap::empty();
 
@@ -41,6 +42,7 @@ mod runtime {
             ALLOCATOR.init((&mut HEAP).as_ptr() as usize, HEAP_SIZE);
         }
     }
+    */
 
     #[alloc_error_handler]
     fn oom(l: core::alloc::Layout) -> ! {
@@ -98,7 +100,7 @@ mod app {
 
     fn lvgl_init(display: Display) -> Lvgl<AppState> {
         let mut lvgl = Lvgl::<AppState>::new();
-        lvgl.register_logger(|s| rtt_target::rprint!(s));
+        //lvgl.register_logger(|s| rtt_target::rprint!(s));
         static mut DRAW_BUFFER: [MaybeUninit<Rgb565>; LVGL_BUFFER_LEN] =
             [MaybeUninit::<Rgb565>::uninit(); LVGL_BUFFER_LEN];
 
@@ -124,7 +126,7 @@ mod app {
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local, init::Monotonics) {
         rtt_target::rtt_init_print!();
-        runtime::init_heap();
+        lvgl::allocator::heap_init();
 
         debug!("Booting");
 
@@ -213,9 +215,6 @@ fn construct_ui(display: &mut lvgl::core::Display<Display, app::AppState>) {
     use lvgl::style::*;
     use lvgl::core::Widget;
 
-    debug!("sizeof={}",
-    core::mem::size_of::<lvgl_sys::lv_indev_data_t>());
-
     let spacing = 12;
 
     let mut screen = display.screen();
@@ -224,8 +223,8 @@ fn construct_ui(display: &mut lvgl::core::Display<Display, app::AppState>) {
     let mut label = Label::new(&mut btn);
     label.set_text(CString::new("Move up").unwrap().as_c_str());
 
-    btn.on_any_event(|target, event, child_target| {
-        debug!("Hello1: {:?}", event);
+    btn.on_event(lvgl::core::Event::Clicked, |target, event, child_target| {
+        debug!("Button event: {:?}", event);
     });
 
     let mut speed_slider = Slider::new(&mut screen);
