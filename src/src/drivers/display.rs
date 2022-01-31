@@ -1,3 +1,4 @@
+use lvgl::Lvgl;
 use stm32f1xx_hal::{
     prelude::*,
     gpio::*,

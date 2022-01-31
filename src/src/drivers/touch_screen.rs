@@ -48,7 +48,7 @@ struct Packet {
     z2: u8,
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone, Copy)]
 /// Processed packet.
 pub struct TouchEvent {
     pub x: u16,

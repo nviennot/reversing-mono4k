@@ -36,8 +36,6 @@ MEMORY
    } INSERT AFTER .bss;
 */
 
-
-
 SECTIONS {
   /* 0x150 is the end of the not yet defined vector_table */
   .lvgl.text ORIGIN(FLASH) + 0x150:
