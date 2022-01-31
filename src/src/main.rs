@@ -8,6 +8,7 @@ mod drivers;
 mod consts;
 mod ui;
 
+use cstr_core::CString;
 use stm32f1xx_hal::pac::Interrupt;
 use consts::system::*;
 use consts::display::*;
@@ -16,6 +17,8 @@ use drivers::{
     touch_screen::{TouchScreenResult, TouchEvent},
     display::Display,
 };
+
+use lvgl::core::{Lvgl, TouchPad};
 
 pub(crate) use runtime::debug;
 
@@ -67,7 +70,6 @@ mod runtime {
 mod app {
 
     use embedded_graphics::pixelcolor::Rgb565;
-    use lvgl::{TouchPad, Lvgl};
 
     use super::*;
 
@@ -86,7 +88,7 @@ mod app {
     #[local]
     struct Local {
         lvgl: Lvgl<AppState>,
-        lvgl_ticks: lvgl::Ticks,
+        lvgl_ticks: lvgl::core::Ticks,
     }
 
     #[derive(Default)]
@@ -109,6 +111,8 @@ mod app {
                 TouchPad::Released
             }
         });
+
+        construct_ui(&mut display);
 
         // Fill the display with something before turning it on.
         lvgl.run_tasks(&mut Default::default());
@@ -202,6 +206,30 @@ mod app {
             lvgl.run_tasks(&mut app_state);
         }
     }
+}
+
+fn construct_ui(display: &mut lvgl::core::Display<Display, app::AppState>) {
+    use lvgl::widgets::*;
+    use lvgl::style::*;
+    use lvgl::core::Widget;
+
+    debug!("sizeof={}",
+    core::mem::size_of::<lvgl_sys::lv_indev_data_t>());
+
+    let spacing = 12;
+
+    let mut screen = display.screen();
+
+    let mut btn = Btn::new(&mut screen);
+    let mut label = Label::new(&mut btn);
+    label.set_text(CString::new("Move up").unwrap().as_c_str());
+
+    btn.on_any_event(|target, event, child_target| {
+        debug!("Hello1: {:?}", event);
+    });
+
+    let mut speed_slider = Slider::new(&mut screen);
+    speed_slider.align_to(&mut screen, Align::Center, 0, 0);
 }
 
 /*

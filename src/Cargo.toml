@@ -21,7 +21,7 @@ arrayvec = {version = "0.7", default-features = false }
 ramp-maker = {version = "0.2", features = ["libm"]}
 cty = "0.2"
 
-lvgl = { path = "../repos/lvgl-rs/lvgl" } #features =["lvgl_alloc"] }
+lvgl = { path = "../repos/lvgl-rs/lvgl", features=["logger"] } #features =["lvgl_alloc"] }
 lvgl-sys = { path = "../repos/lvgl-rs/lvgl-sys" }
 heapless = "0.5"
 #memchr= { version = "2", default-features = false }
