@@ -27,6 +27,7 @@ pub struct Machine {
     pub touch_screen: TouchScreen,
     pub stepper: Stepper,
     pub systick: Systick,
+    pub lcd: Lcd,
 }
 
 impl Machine {
@@ -104,13 +105,12 @@ impl Machine {
         //--------------------------
         // LCD Panel
         //--------------------------
-        let mut lcd = Lcd::new(
+        let lcd = Lcd::new(
             gpiod.pd12,
             gpioa.pa4, gpioa.pa5, gpioa.pa6, gpioa.pa7,
             dp.SPI1,
             &clocks, &mut gpioa.crl, &mut gpiod.crh, &mut afio.mapr,
         );
-        lcd.demo();
 
         //--------------------------
         // Systicks for RTIC
@@ -119,6 +119,6 @@ impl Machine {
         let syst = delay.free();
         let systick = Systick::new(syst, clocks.sysclk().0);
 
-        Self { ext_flash, display, touch_screen, stepper, systick }
+        Self { ext_flash, display, touch_screen, stepper, lcd, systick }
     }
 }

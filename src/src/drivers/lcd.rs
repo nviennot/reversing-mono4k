@@ -26,9 +26,6 @@ pub struct Lcd {
 }
 
 impl Lcd {
-    const COLS: u16 = 3840;
-    const ROWS: u16 = 2400;
-
     pub fn new(
         reset: PD12<Input<Floating>>,
         cs: PA4<Input<Floating>>,
@@ -62,23 +59,44 @@ impl Lcd {
         Self { cs, spi }
     }
 
+    const COLS: u16 = 3840;
+    const ROWS: u16 = 2400;
+
+    const DEFAULT_COLOR_MAP: [u16; 16] = [
+        0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
+        0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff
+    ];
+
     pub fn demo(&mut self) {
-        self.draw_all_black();
-        self.draw_waves();
-        self.draw_all_black();
-        self.draw_waves();
+        crate::debug!("version = 0x{:x?}", self.get_version());
+
+        self.draw_waves(8);
+
+        let mut cmap = Self::DEFAULT_COLOR_MAP;
+        loop {
+            let first = cmap[0];
+            for k in 0..15 {
+                cmap[k] = cmap[k+1];
+            }
+            cmap[15] = first;
+
+            self.set_color_map(&cmap);
+            self.delay_150ns(300000);
+        }
+
+        self.draw_waves(16);
     }
 
     pub fn draw_all_black(&mut self) {
         self.draw(|row, col| { 0 })
     }
 
-    pub fn draw_waves(&mut self) {
+    pub fn draw_waves(&mut self, mult: u32) {
         self.draw(|row, col| {
             if row % 100 == 0 || col % 100 == 0 {
                 0x0F
             } else {
-                ((16*16 * row as u32 * col as u32) / (Self::ROWS as u32 * Self::COLS as u32)) as u8
+                ((mult*16 * row as u32 * col as u32) / (Self::ROWS as u32 * Self::COLS as u32)) as u8
             }
         })
     }
@@ -87,7 +105,16 @@ impl Lcd {
         self.cs.set_low();
         self.delay_150ns(10);
 
-        self.cmd(Command::StartDraw);
+        // The FPGA seems a little buggy.
+        // It won't take the command well. Apparently, we have to send it twice.
+        // Otherwise, 2/3 of a second frame won't render. There's a strange bug.
+        self.cmd(Command::StartDrawing, None, None);
+        self.delay_150ns(60);
+        self.cs.set_high();
+        self.delay_150ns(6000); // 1ms delay
+        self.cs.set_low();
+        self.delay_150ns(10);
+        self.cmd(Command::StartDrawing, None, None);
 
         for row in 0..Self::ROWS {
             for col in 0..Self::COLS/4 {
@@ -104,48 +131,49 @@ impl Lcd {
         self.cs.set_high();
     }
 
-    fn cmd(&mut self, cmd: Command) {
-        match cmd {
-            Command::GetVersion => {
-                let mut version = [0_u16; 2];
-                self.cmd_inner(cmd, &[], Some(&mut version));
-                crate::debug!("version = {:?}", version);
-                //let version = (version[1] as u32 << 16) | (version[0]);
-            }
-            Command::StartDraw => {
-                // The FPGA seems a little buggy.
-                // It won't take the command well. Apparently, we have to send it twice.
-                // Otherwise, 2/3 of a second frame won't render. There's a strange bug.
-                self.cmd_inner(cmd, &[], None);
-                self.delay_150ns(60);
-                self.cs.set_high();
-                self.delay_150ns(6000); // 1ms delay
-                self.cs.set_low();
-                self.delay_150ns(10);
-                self.cmd_inner(cmd, &[], None);
-            }
-            //0xFC => self.cmd_inner(0xF1, &[0; 16], None),
-        }
+    pub fn get_version(&mut self) -> u32 {
+        let mut rx = [0_u16; 2];
+        self.cmd(Command::GetVersion, None, Some(&mut rx));
+        let version = (rx[1] as u32) << 16 | rx[0] as u32;
+        return version
     }
 
-    fn cmd_inner(&mut self, cmd: Command, tx: &[u16], rx: Option<&mut [u16]>) {
+    pub fn set_color_map(&mut self, map: &[u16; 16]) {
+        self.cmd(Command::SetColorMap, Some(map), None);
+    }
+
+    pub fn get_color_map(&mut self) -> [u16; 16] {
+        let mut map = [0_u16; 16];
+        self.cmd(Command::GetColorMap, None, Some(&mut map));
+        return map;
+    }
+
+    fn cmd(&mut self, cmd: Command, tx: Option<&[u16]>, rx: Option<&mut [u16]>) {
+        let toggle_cs = self.cs.is_set_high();
+
+        if toggle_cs {
+            self.cs.set_low();
+            self.delay_150ns(10);
+        }
+
         self.spi.spi_write(&[cmd as u16, 0]).unwrap();
 
-        self.spi.spi_write(tx).unwrap();
-
-        if let Some(rx) = rx {
-            for v in rx {
-                block!(self.spi.send(0)).unwrap();
-                *v = block!(self.spi.read()).unwrap();
-                self.delay_150ns(1);
-            }
+        if let Some(tx) = tx {
+            self.spi.spi_write(tx).unwrap();
         }
 
-        // check rx[0], it should be not nul.
+        if let Some(rx) = rx {
+            self.spi.transfer(rx).unwrap();
+        }
+
+        if toggle_cs {
+            self.delay_150ns(60);
+            self.cs.set_high();
+        }
     }
 
-    pub fn delay_150ns(&self, count: usize) {
-        cortex_m::asm::delay(20)
+    pub fn delay_150ns(&self, count: u32) {
+        cortex_m::asm::delay(20*count);
     }
 }
 
@@ -153,5 +181,14 @@ impl Lcd {
 #[repr(u16)]
 enum Command {
     GetVersion = 0xF0,
-    StartDraw = 0xFB,
+    StartDrawing = 0xFB,
+
+    SetColorMap = 0xF1,
+    GetColorMap = 0xF2,
+
+    /*
+    0xF3, // sends 18 u16, essentially a range(1,16) / (num)
+    0xF4, // receives 18 u16
+    0xFC, // sends 16 u16, zeroed
+    */
 }
