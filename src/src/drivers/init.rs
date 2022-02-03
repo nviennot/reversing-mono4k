@@ -10,6 +10,7 @@ use crate::drivers::{
     display::Display,
     touch_screen::TouchScreen,
     stepper::Stepper,
+    lcd::Lcd,
     clock,
 };
 
@@ -101,8 +102,20 @@ impl Machine {
         );
 
         //--------------------------
+        // LCD Panel
+        //--------------------------
+        let mut lcd = Lcd::new(
+            gpiod.pd12,
+            gpioa.pa4, gpioa.pa5, gpioa.pa6, gpioa.pa7,
+            dp.SPI1,
+            &clocks, &mut gpioa.crl, &mut gpiod.crh, &mut afio.mapr,
+        );
+        lcd.demo();
+
+        //--------------------------
         // Systicks for RTIC
         //--------------------------
+
         let syst = delay.free();
         let systick = Systick::new(syst, clocks.sysclk().0);
 

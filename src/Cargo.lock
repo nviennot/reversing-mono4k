@@ -48,6 +48,7 @@ dependencies = [
  "gd32f3",
  "lvgl",
  "lvgl-sys",
+ "nb 1.0.0",
  "ramp-maker",
  "rtt-target",
  "spi-memory",

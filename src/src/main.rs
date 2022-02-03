@@ -100,7 +100,7 @@ mod app {
 
     fn lvgl_init(display: Display) -> Lvgl<AppState> {
         let mut lvgl = Lvgl::<AppState>::new();
-        //lvgl.register_logger(|s| rtt_target::rprint!(s));
+        lvgl.register_logger(|s| rtt_target::rprint!(s));
         static mut DRAW_BUFFER: [MaybeUninit<Rgb565>; LVGL_BUFFER_LEN] =
             [MaybeUninit::<Rgb565>::uninit(); LVGL_BUFFER_LEN];
 
@@ -126,7 +126,8 @@ mod app {
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local, init::Monotonics) {
         rtt_target::rtt_init_print!();
-        lvgl::allocator::heap_init();
+        //lvgl::allocator::heap_init();
+        lvgl::core::Lvgl::<u8>::new();
 
         debug!("Booting");
 
