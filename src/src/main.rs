@@ -8,7 +8,7 @@ mod drivers;
 mod consts;
 mod ui;
 
-use cstr_core::CString;
+use cstr_core::{CStr, CString};
 use stm32f1xx_hal::pac::Interrupt;
 use consts::system::*;
 use consts::display::*;
@@ -89,47 +89,40 @@ mod app {
     /* resources local to specific RTIC tasks */
     #[local]
     struct Local {
-        lvgl: Lvgl<AppState>,
+        lvgl: Lvgl,
         lvgl_ticks: lvgl::core::Ticks,
+        lvgl_input_device: lvgl::core::InputDevice::<TouchPad>,
+        display: lvgl::core::Display::<Display>,
     }
 
-    #[derive(Default)]
-    pub struct AppState {
-        last_touch_event: Option<TouchEvent>,
-    }
+    fn lvgl_init(display: Display) -> (Lvgl, lvgl::core::Display<Display>, lvgl::core::InputDevice<TouchPad>) {
+        let mut lvgl = Lvgl::new();
 
-    fn lvgl_init(display: Display) -> Lvgl<AppState> {
-        let mut lvgl = Lvgl::<AppState>::new();
+        // Register logger
         lvgl.register_logger(|s| rtt_target::rprint!(s));
+
         static mut DRAW_BUFFER: [MaybeUninit<Rgb565>; LVGL_BUFFER_LEN] =
             [MaybeUninit::<Rgb565>::uninit(); LVGL_BUFFER_LEN];
 
-        let mut display = lvgl.register_display(unsafe { &mut DRAW_BUFFER }, display);
+        let mut display = lvgl::core::Display::new(&lvgl, display, unsafe { &mut DRAW_BUFFER });
 
-        display.register_input_device(|app_state| {
-            if let Some(ref e) = app_state.last_touch_event {
-                TouchPad::Pressed { x: e.x as i16, y: e.y as i16 }
-            } else {
-                TouchPad::Released
-            }
-        });
+        let input_device = lvgl::core::InputDevice::<TouchPad>::new(&mut display);
 
         construct_ui(&mut display);
 
         // Fill the display with something before turning it on.
-        lvgl.run_tasks(&mut Default::default());
+        lvgl.run_tasks();
         display.backlight.set_high();
 
-        lvgl
+        (lvgl, display, input_device)
     }
 
     #[init]
     fn init(ctx: init::Context) -> (Shared, Local, init::Monotonics) {
         rtt_target::rtt_init_print!();
-        //lvgl::allocator::heap_init();
-        lvgl::core::Lvgl::<u8>::new();
-
         debug!("Booting");
+
+        lvgl::core::Lvgl::new();
 
         let machine = Machine::new(ctx.core, ctx.device);
 
@@ -138,7 +131,7 @@ mod app {
         let stepper = machine.stepper;
         let touch_screen = machine.touch_screen;
 
-        let lvgl = lvgl_init(display);
+        let (lvgl, display, lvgl_input_device) = lvgl_init(display);
 
         let lvgl_ticks = lvgl.ticks();
         lvgl_tick_task::spawn().unwrap();
@@ -155,7 +148,7 @@ mod app {
 
         (
             Shared { stepper, touch_screen, last_touch_event },
-            Local { lvgl, lvgl_ticks },
+            Local { lvgl, lvgl_ticks, lvgl_input_device, display },
             init::Monotonics(systick),
         )
     }
@@ -200,37 +193,151 @@ mod app {
         }
     }
 
-    #[idle(local = [lvgl], shared = [last_touch_event])]
+    #[idle(local = [lvgl, lvgl_input_device, display], shared = [last_touch_event])]
     fn idle(mut ctx: idle::Context) -> ! {
-        let mut app_state: AppState = Default::default();
         let lvgl = ctx.local.lvgl;
         loop {
-            app_state.last_touch_event = ctx.shared.last_touch_event.lock(|e| *e);
-            lvgl.run_tasks(&mut app_state);
+            let last_touch_event = ctx.shared.last_touch_event.lock(|e| *e);
+            *ctx.local.lvgl_input_device.state() = if let Some(ref e) = last_touch_event {
+                TouchPad::Pressed { x: e.x as i16, y: e.y as i16 }
+            } else {
+                TouchPad::Released
+            };
+            lvgl.run_tasks();
         }
     }
 }
 
-fn construct_ui(display: &mut lvgl::core::Display<Display, app::AppState>) {
+
+use lvgl::widgets::*;
+
+/*
+struct UIMoveZ<'p> {
+    btn_move_up: Btn<'p, Self>,
+}
+ */
+
+ struct UiContext {
+     x: u16,
+ }
+
+fn construct_ui<D>(display: &mut lvgl::core::Display<D>) {
     use lvgl::widgets::*;
     use lvgl::style::*;
-    use lvgl::core::Widget;
+    use lvgl::core::*;
+    use lvgl::prelude::*;
 
     let spacing = 12;
 
-    let mut screen = display.screen();
+    let screen = Screen::<UiContext>::new(display);
 
-    let mut btn = Btn::new(&mut screen);
-    let mut label = Label::new(&mut btn);
-    label.set_text(CString::new("Move up").unwrap().as_c_str());
+    let mut screen = screen.nest(|p|
+        Label::new(p)
+            .text(&CStr::from_bytes_with_nul(b"Turbo Resin v0.1.1\0").unwrap())
+            .align(p, Align::BottomRight, -5, -5)
+    );
 
-    btn.on_event(lvgl::core::Event::Clicked, |target, event, child_target| {
-        debug!("Button event: {:?}", event);
-    });
+    let btn_move_up = Btn::new(&mut screen)
+        .nest(|p| Label::new(p).text(&CStr::from_bytes_with_nul(b"Move Up\0").unwrap()))
+        .align(&screen, Align::TopMid, 0, 2*spacing)
+        .on_event(Event::Clicked, |context| {
+            debug!("Button event: pressed!");
+            /*
+            btn_up_active = !btn_up_active;
+            if btn_up_active {
+                stepper.modify(|s| s.set_target_relative(100.0.mm()));
+                unsafe {
+                    lvgl_sys::lv_btn_set_state(btn_down.raw().unwrap().as_mut(),
+                        lvgl_sys::LV_BTN_STATE_DISABLED as u8);
+                }
+            } else {
+                stepper.modify(|s| s.controlled_stop());
+            }
+            */
+        });
 
-    let mut speed_slider = Slider::new(&mut screen);
-    speed_slider.align_to(&mut screen, Align::Center, 0, 0);
+    let btn_move_down = Btn::new(&mut screen)
+        .nest(|p| Label::new(p).text(&CStr::from_bytes_with_nul(b"Move Down\0").unwrap()))
+        .align(&btn_move_up, Align::OutBottomMid, 0, spacing)
+        .on_event(Event::Clicked, |state| {
+            /*
+            btn_down_active = !btn_down_active;
+            if btn_down_active {
+                stepper.modify(|s| s.set_target_relative((-100.0).mm()));
+                unsafe {
+                    lvgl_sys::lv_btn_set_state(btn_up.raw().unwrap().as_mut(),
+                        lvgl_sys::LV_BTN_STATE_DISABLED as u8);
+                }
+            } else {
+                stepper.modify(|s| s.controlled_stop());
+            }
+            */
+            debug!("Button event: pressed!");
+        });
+
+
+    let speed_slider = Slider::new(&mut screen)
+        .align(&btn_move_down, Align::OutBottomMid, 0, 2*spacing)
+        .range(1500, 10_000)
+        .value(10_000, 0)
+        .on_event(Event::ValueChanged, |state| {
+            /*
+            let value = unsafe { lvgl_sys::lv_slider_get_value(slider.raw().unwrap().as_ref()) };
+            let value = (value as f32)/10000.0;
+            let value = value*value*value;
+
+            let value = value * 30.0;
+
+            stepper.modify(|s| s.set_max_speed(Some(value.mm())));
+            */
+            debug!("Slider changed");
+        });
+
+    let speed_label = Label::new(&mut screen)
+        .align(&speed_slider, Align::OutBottomLeft, 70, spacing)
+        //.width(320-70)
+        .text(&CStr::from_bytes_with_nul(b"Max Speed: 5 mm/s\0").unwrap());
+
+    let position_label = Label::new(&mut screen)
+        .align(&speed_label, Align::OutBottomLeft, 0, 0)
+        .text(&CStr::from_bytes_with_nul(b"Position: 0 mm\0").unwrap());
+
+    let context = UiContext { x: 0 };
+
+    screen.context().replace(context);
+    display.load_screen(&mut screen);
+
+    //UIMoveZ { btn_move_up }
+
+    //let mut speed_slider = Slider::new(&mut screen);
+    //speed_slider.align_to(&mut screen, Align::Center, 0, 0);
 }
+
+/*
+
+fn draw() {
+        if stepper.access(|s| s.is_idle()) {
+            btn_down_active = false;
+            btn_up_active = false;
+
+            // turn off warning. Weird.
+            if btn_down_active || btn_up_active {}
+
+            unsafe {
+                lvgl_sys::lv_btn_set_state(btn_up.raw().unwrap().as_mut(),
+                    lvgl_sys::LV_BTN_STATE_RELEASED as u8);
+                lvgl_sys::lv_btn_set_state(btn_down.raw().unwrap().as_mut(),
+                    lvgl_sys::LV_BTN_STATE_RELEASED as u8);
+            }
+        }
+
+        ui.tick_inc(Duration::from_millis(20));
+    }
+
+}
+
+*/
+
 
 /*
 fn draw_touch_event(display: &mut Display, touch_event: Option<&TouchEvent>) {
