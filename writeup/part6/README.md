@@ -178,8 +178,7 @@ There we go. The official SDK uses a `PREDV0` and `PREDV1` of 5 and 10
 incorrectly. It should be 7 and 1, as configured by the original firmware.
 
 It finally works. The configuration seems a bit convoluted but that will do
-for now. The implementation is in
-[/src/src/drivers/clock.rs](/src/src/drivers/clock.rs).
+for now.
 
 ## Intializing the I/O pins to the display, and the external memory controller
 
@@ -370,9 +369,6 @@ moves, we need to redraw the background where it needs to be invalidated.
 We might want to create abstractions to support some kinds of layer system as
 we have a background, UI elements (buttons, text), and on top we can have a
 modal box.
-
-The source code driving the display can be found in
-[/src/src/drivers/display.rs](/src/src/drivers/display.rs).
 
 Next, we are going to detect touches on the display.
 

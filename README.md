@@ -1,6 +1,9 @@
 Reverse engineering the Anycubic Photon Mono 4K
 ===============================================
 
+This documents the reversing of the Mono 4K, which helps in writing the
+open-source firmware [Turbo Resin](https://github.com/nviennot/turbo-resin).
+
 ## Table of content
 
 * [Part 1: Discovery of the hardware and firmware extraction](/writeup/part1/README.md)
@@ -11,7 +14,6 @@ Reverse engineering the Anycubic Photon Mono 4K
 * [Part 6: Taking control of the user-facing LCD display](/writeup/part6/README.md)
 * [Part 7: Detecting touches on the display and improving on the original firmware](/writeup/part7/README.md)
 * [Part 8: Driving the Z-axis stepper motor](/writeup/part8/README.md)
-
 
 ## Introduction
 
@@ -32,33 +34,9 @@ There are visible lines due to the lack of anti-aliasing support on the printer.
 Its LCD screen outputs only fully transparent, or fully opaque pixels, no gray-scale.
 Apparently, we have to wait for a firmware update, but I'd rather not wait.
 
-## Goal
-
-* Replace the firmware of the printer, so we can implement the features we want.
-  For example:
-* Add anti-aliasing support
-* Provide multiple exposure support for a given layer. This would be helpful to print
-  exposure calibration objects. A bit like the R_E_R_F feature.
-* Optimize print speed. During printing, The lift speed is a big deal. Too slow, and the print takes
-  too long and my patience runs down. Too fast, and the print delaminates and
-  it's trash. Perhaps we can detect the tensile pressure while lifting, or when
-  the printed layer unstick from the FEP film to optimize printing speed
-* Add a temperature control unit to keep the resin at temperature
-* Accept USB sticks as usual, but also allow the printer to act like a device
-  (USB OTG), and be controlled by a host.
-* Write the new firmware purely in [Rust](https://www.rust-lang.org/what/embedded)!
-
-## Writeup
-
-* [Part 1: Discovery of the hardware and firmware extraction](/writeup/part1/README.md)
-* [Part 2: Planning the read of the external flash](/writeup/part2/README.md)
-* [Part 3: Creating a Rust development environment](/writeup/part3/README.md)
-* [Part 4: Dumping content of the external flash](/writeup/part4/README.md)
-* [Part 5: Graphics extraction from the external ROM](/writeup/part5/README.md)
-* [Part 6: Taking control of the user-facing LCD display](/writeup/part6/README.md)
-* [Part 7: Detecting touches on the display and improving on the original firmware](/writeup/part7/README.md)
-* [Part 8: Driving the Z-axis stepper motor](/writeup/part8/README.md)
-
+Reverse engineering the printer will guide our implementation of a new firmware,
+[Turbo Resin](https://github.com/nviennot/turbo-resin), so we can add the
+features that we want.
 
 ## Resources
 
@@ -67,5 +45,5 @@ Apparently, we have to wait for a firmware update, but I'd rather not wait.
 * UI images: [/firmware/ui](/firmware/ui) folder
 * PCB photos: [pcb](/pcb) folder
 * Pin config: [print_ports_config.py](/firmware/print_ports_config.py) and [port_config.txt](/firmware/port_config.txt)
-* Rust firmware: [src](/src) folder
+* Turbo Resin firmware: (https://github.com/nviennot/turbo-resin)
 

@@ -311,8 +311,6 @@ issued to the host (the debugger). We'll dive into these facilities in the next
 part to see how we can use this to send a large binary (like the external
 flash that we are after).
 
-The source code of the rust firmware can be found in [/src](/src).
-
 Next, we'll be dumping the content of the flash chip.
 
 [Go to Part 4](../part4/README.md)

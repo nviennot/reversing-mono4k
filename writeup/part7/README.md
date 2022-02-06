@@ -131,10 +131,6 @@ We can improve the touchscreen accuracy with the following:
 * Leave the CS pin down during the entire sampling of data
 * Do robust pressure measurements
 
-
-The source code detecting touches can be found in
-[/src/src/drivers/touch_screen.rs](/src/src/drivers/touch_screen.rs).
-
 Next, we are going to move the build plate.
 
 [Go to Part 8](../part8/README.md)
