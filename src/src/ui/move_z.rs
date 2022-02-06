@@ -6,7 +6,7 @@ use lvgl::{
 };
 use alloc::format;
 
-use cstr_core::CStr;
+use lvgl::cstr_core::CStr;
 use crate::drivers::stepper::{
     prelude::*,
     Stepper
@@ -76,7 +76,7 @@ impl MoveZ {
             .set_range(1500, 10_000)
             .set_value(10_000, 0)
             .on_event(Event::ValueChanged, |context| {
-                let value = unsafe { lvgl_sys::lv_slider_get_value(context.speed_slider.raw) };
+                let value = unsafe { lvgl::sys::lv_slider_get_value(context.speed_slider.raw) };
 
                 let value = (value as f32)/10000.0;
                 let value = value*value*value;

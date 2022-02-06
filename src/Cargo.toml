@@ -9,39 +9,26 @@ version = "0.1.0"
 embedded-hal = "0.2.3"
 cortex-m = "0.7"
 cortex-m-rt = "0.7"
-#cortex-m-semihosting = "0.3"
-#panic-semihosting = "0.5"
-#panic-halt = "0.2"
-spi-memory = "0.2"
-stm32-fmc = "0.2"
-display-interface = "0.4"
-embedded-graphics = "0.7"
-embedded-graphics-core = "0.3"
-arrayvec = {version = "0.7", default-features = false }
-ramp-maker = {version = "0.2", features = ["libm"]}
-cty = "0.2"
-
-lvgl = { path = "../repos/lvgl-rs/lvgl", features =["logger", "lvgl_alloc"] }
-lvgl-sys = { path = "../repos/lvgl-rs/lvgl-sys" }
-#heapless = "0.5"
-#memchr= { version = "2", default-features = false }
-cstr_core = "0.2"
-#alloc-cortex-m = "0.4"
-rtt-target = { version = "0.3", features = ["cortex-m"]}
 cortex-m-rtic = "1.0"
 systick-monotonic = "1.0"
-embedded-time = "0.12"
+rtt-target = { version = "0.3", features = ["cortex-m"]}
+stm32f1xx-hal = { git = "https://github.com/stm32-rs/stm32f1xx-hal.git", features = ["rt", "stm32f107", "medium"]}
+gd32f3 = { git = "https://github.com/nviennot/gd32f3-rs.git", features = ["gd32f307"] } # This one is for the clock register definitions.
+spi-memory = "0.2" # For the external flash access. Maybe not useful at this point.
+embedded-graphics = "0.7"
+embedded-graphics-core = "0.3"
+ramp-maker = {version = "0.2", features = ["libm"]}
 nb = "1"
+lvgl = { git = "https://github.com/nviennot/lvgl-rs.git", features =["logger", "lvgl_alloc"] }
+
+#arrayvec = {version = "0.7", default-features = false }
+#cty = "0.2"
+#embedded-time = "0.12"
 #fugit = "0.3"
 
-[dependencies.gd32f3]
-git = "https://github.com/nviennot/gd32f3-rs.git"
-features = ["gd32f307"]
-
-[dependencies.stm32f1xx-hal]
-git = "https://github.com/stm32-rs/stm32f1xx-hal.git"
-#version = "0.6.1"
-features = ["rt", "stm32f107", "medium"]
+# uncomment this for lvgl dev
+# [patch."https://github.com/nviennot/lvgl-rs.git"]
+# lvgl = { path = "../repos/lvgl-rs/lvgl" }
 
 # this lets you use `cargo fix`!
 [[bin]]

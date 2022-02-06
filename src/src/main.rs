@@ -9,7 +9,6 @@ mod consts;
 mod ui;
 
 use alloc::format;
-use cstr_core::{CStr, CString};
 use drivers::stepper::Direction;
 use lvgl::style::State;
 use stm32f1xx_hal::pac::Interrupt;
