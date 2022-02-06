@@ -34,15 +34,8 @@ embedded-time = "0.12"
 nb = "1"
 #fugit = "0.3"
 
-
-
-#[patch.crates-io]
-#cortex-m-rt = { path = '../repos/cortex-m/cortex-m-rt' }
-#cortex-m = { path = '../repos/cortex-m' }
-#alloc-cortex-m = { path = '../repos/alloc-cortex-m' }
-
 [dependencies.gd32f3]
-path = "../repos/gd32-rs/gd32f3"
+git = "https://github.com/nviennot/gd32f3-rs.git"
 features = ["gd32f307"]
 
 [dependencies.stm32f1xx-hal]

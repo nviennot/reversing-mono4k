@@ -1,15 +1,12 @@
 use stm32f1xx_hal::{
     time::Hertz,
     rcc::Clocks,
+    prelude::*,
 };
 
 use gd32f3::gd32f307::{
     PMU,
     RCU,
-};
-
-use stm32f1xx_hal::{
-    prelude::*,
 };
 
 pub fn setup_clock_120m_hxtal(_rcc: stm32f1xx_hal::pac::RCC) -> Clocks {

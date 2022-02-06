@@ -446,6 +446,7 @@ dependencies = [
 [[package]]
 name = "gd32f3"
 version = "0.5.0"
+source = "git+https://github.com/nviennot/gd32f3-rs.git#887cec1e357fc1708bced40a0508b577a60632af"
 dependencies = [
  "cortex-m",
  "vcell",
