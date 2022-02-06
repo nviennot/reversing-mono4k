@@ -8,17 +8,25 @@ mod drivers;
 mod consts;
 mod ui;
 
+use alloc::format;
 use cstr_core::{CStr, CString};
+use drivers::stepper::Direction;
+use lvgl::style::State;
 use stm32f1xx_hal::pac::Interrupt;
 use consts::system::*;
 use consts::display::*;
 use drivers::{
     init::{Systick, Machine, prelude::*},
     touch_screen::{TouchScreenResult, TouchEvent},
-    display::Display,
+    display::Display as RawDisplay,
 };
 
-use lvgl::core::{Lvgl, TouchPad};
+use embedded_graphics::pixelcolor::Rgb565;
+
+use lvgl::core::{
+    Lvgl, TouchPad, Display, InputDevice,
+};
+
 
 pub(crate) use runtime::debug;
 
@@ -70,9 +78,6 @@ mod runtime {
     dispatchers=[CAN_RX1, CAN_SCE, CAN2_RX0, CAN2_RX1]
 )]
 mod app {
-
-    use embedded_graphics::pixelcolor::Rgb565;
-
     use super::*;
 
     #[monotonic(binds = SysTick, default = true)]
@@ -82,6 +87,7 @@ mod app {
     #[shared]
     struct Shared {
         stepper: drivers::stepper::Stepper,
+        #[lock_free]
         touch_screen: drivers::touch_screen::TouchScreen,
         last_touch_event: Option<TouchEvent>,
     }
@@ -90,12 +96,13 @@ mod app {
     #[local]
     struct Local {
         lvgl: Lvgl,
-        lvgl_ticks: lvgl::core::Ticks,
-        lvgl_input_device: lvgl::core::InputDevice::<TouchPad>,
-        display: lvgl::core::Display::<Display>,
+        lvgl_ticks: Ticks,
+        lvgl_input_device: InputDevice::<TouchPad>,
+        display: Display::<RawDisplay>,
+        move_z_ui: Screen<MoveZ>,
     }
 
-    fn lvgl_init(display: Display) -> (Lvgl, lvgl::core::Display<Display>, lvgl::core::InputDevice<TouchPad>) {
+    fn lvgl_init(display: RawDisplay) -> (Lvgl, Display<RawDisplay>, InputDevice<TouchPad>) {
         let mut lvgl = Lvgl::new();
 
         // Register logger
@@ -104,15 +111,9 @@ mod app {
         static mut DRAW_BUFFER: [MaybeUninit<Rgb565>; LVGL_BUFFER_LEN] =
             [MaybeUninit::<Rgb565>::uninit(); LVGL_BUFFER_LEN];
 
-        let mut display = lvgl::core::Display::new(&lvgl, display, unsafe { &mut DRAW_BUFFER });
+        let mut display = Display::new(&lvgl, display, unsafe { &mut DRAW_BUFFER });
 
         let input_device = lvgl::core::InputDevice::<TouchPad>::new(&mut display);
-
-        construct_ui(&mut display);
-
-        // Fill the display with something before turning it on.
-        lvgl.run_tasks();
-        display.backlight.set_high();
 
         (lvgl, display, input_device)
     }
@@ -131,12 +132,18 @@ mod app {
         let stepper = machine.stepper;
         let touch_screen = machine.touch_screen;
 
-        let (lvgl, display, lvgl_input_device) = lvgl_init(display);
+        let (mut lvgl, mut display, lvgl_input_device) = lvgl_init(display);
 
         let lvgl_ticks = lvgl.ticks();
         lvgl_tick_task::spawn().unwrap();
 
         let last_touch_event = None;
+
+        let mut move_z_ui = MoveZ::new(&display);
+        // Fill the display with something before turning it on.
+        display.load_screen(&mut move_z_ui);
+        lvgl.run_tasks();
+        display.backlight.set_high();
 
         /*
         let ext_flash = machine.ext_flash;
@@ -148,7 +155,7 @@ mod app {
 
         (
             Shared { stepper, touch_screen, last_touch_event },
-            Local { lvgl, lvgl_ticks, lvgl_input_device, display },
+            Local { lvgl, lvgl_ticks, lvgl_input_device, display, move_z_ui },
             init::Monotonics(systick),
         )
     }
@@ -167,9 +174,9 @@ mod app {
     }
 
     #[task(priority = 2, binds = EXTI9_5, shared = [touch_screen])]
-    fn touch_screen_pen_down_interrupt(mut ctx: touch_screen_pen_down_interrupt::Context) {
+    fn touch_screen_pen_down_interrupt(ctx: touch_screen_pen_down_interrupt::Context) {
         use TouchScreenResult::*;
-        match ctx.shared.touch_screen.lock(|ts| { ts.on_pen_down_interrupt() }) {
+        match ctx.shared.touch_screen.on_pen_down_interrupt() {
             DelayMs(delay_ms) => {
                 cortex_m::peripheral::NVIC::mask(Interrupt::EXTI9_5);
                 touch_screen_sampling_task::spawn_after((delay_ms as u64).millis()).unwrap();
@@ -182,7 +189,7 @@ mod app {
     #[task(priority = 2, local = [], shared = [touch_screen, last_touch_event])]
     fn touch_screen_sampling_task(mut ctx: touch_screen_sampling_task::Context) {
         use TouchScreenResult::*;
-        match ctx.shared.touch_screen.lock(|ts| ts.on_delay_expired()) {
+        match ctx.shared.touch_screen.on_delay_expired() {
             DelayMs(delay_ms) => {
                 touch_screen_sampling_task::spawn_after((delay_ms as u64).millis()).unwrap();
             },
@@ -193,160 +200,188 @@ mod app {
         }
     }
 
-    #[idle(local = [lvgl, lvgl_input_device, display], shared = [last_touch_event])]
+    #[idle(local = [lvgl, lvgl_input_device, display, move_z_ui], shared = [last_touch_event, stepper])]
     fn idle(mut ctx: idle::Context) -> ! {
         let lvgl = ctx.local.lvgl;
+        let lvgl_input_device = ctx.local.lvgl_input_device;
+        let move_z_ui = ctx.local.move_z_ui.context().as_mut().unwrap();
+
         loop {
-            let last_touch_event = ctx.shared.last_touch_event.lock(|e| *e);
-            *ctx.local.lvgl_input_device.state() = if let Some(ref e) = last_touch_event {
-                TouchPad::Pressed { x: e.x as i16, y: e.y as i16 }
-            } else {
-                TouchPad::Released
-            };
+            ctx.shared.last_touch_event.lock(|e| {
+                *lvgl_input_device.state() = if let Some(ref e) = e {
+                    TouchPad::Pressed { x: e.x as i16, y: e.y as i16 }
+                } else {
+                    TouchPad::Released
+                };
+            });
+
             lvgl.run_tasks();
+
+            move_z_ui.update(&mut ctx.shared.stepper);
         }
     }
 }
 
 
+use lvgl::core::Screen;
+use lvgl::core::Ticks;
 use lvgl::widgets::*;
+use lvgl::core::*;
 
-/*
-struct UIMoveZ<'p> {
-    btn_move_up: Btn<'p, Self>,
-}
- */
-
- struct UiContext {
-     x: u16,
- }
-
-fn construct_ui<D>(display: &mut lvgl::core::Display<D>) {
-    use lvgl::widgets::*;
-    use lvgl::style::*;
-    use lvgl::core::*;
-    use lvgl::prelude::*;
-
-    let spacing = 12;
-
-    let screen = Screen::<UiContext>::new(display);
-
-    let mut screen = screen.nest(|p|
-        Label::new(p)
-            .text(&CStr::from_bytes_with_nul(b"Turbo Resin v0.1.1\0").unwrap())
-            .align(p, Align::BottomRight, -5, -5)
-    );
-
-    let btn_move_up = Btn::new(&mut screen)
-        .nest(|p| Label::new(p).text(&CStr::from_bytes_with_nul(b"Move Up\0").unwrap()))
-        .align(&screen, Align::TopMid, 0, 2*spacing)
-        .on_event(Event::Clicked, |context| {
-            debug!("Button event: pressed!");
-            /*
-            btn_up_active = !btn_up_active;
-            if btn_up_active {
-                stepper.modify(|s| s.set_target_relative(100.0.mm()));
-                unsafe {
-                    lvgl_sys::lv_btn_set_state(btn_down.raw().unwrap().as_mut(),
-                        lvgl_sys::LV_BTN_STATE_DISABLED as u8);
-                }
-            } else {
-                stepper.modify(|s| s.controlled_stop());
-            }
-            */
-        });
-
-    let btn_move_down = Btn::new(&mut screen)
-        .nest(|p| Label::new(p).text(&CStr::from_bytes_with_nul(b"Move Down\0").unwrap()))
-        .align(&btn_move_up, Align::OutBottomMid, 0, spacing)
-        .on_event(Event::Clicked, |state| {
-            /*
-            btn_down_active = !btn_down_active;
-            if btn_down_active {
-                stepper.modify(|s| s.set_target_relative((-100.0).mm()));
-                unsafe {
-                    lvgl_sys::lv_btn_set_state(btn_up.raw().unwrap().as_mut(),
-                        lvgl_sys::LV_BTN_STATE_DISABLED as u8);
-                }
-            } else {
-                stepper.modify(|s| s.controlled_stop());
-            }
-            */
-            debug!("Button event: pressed!");
-        });
-
-
-    let speed_slider = Slider::new(&mut screen)
-        .align(&btn_move_down, Align::OutBottomMid, 0, 2*spacing)
-        .range(1500, 10_000)
-        .value(10_000, 0)
-        .on_event(Event::ValueChanged, |state| {
-            /*
-            let value = unsafe { lvgl_sys::lv_slider_get_value(slider.raw().unwrap().as_ref()) };
-            let value = (value as f32)/10000.0;
-            let value = value*value*value;
-
-            let value = value * 30.0;
-
-            stepper.modify(|s| s.set_max_speed(Some(value.mm())));
-            */
-            debug!("Slider changed");
-        });
-
-    let speed_label = Label::new(&mut screen)
-        .align(&speed_slider, Align::OutBottomLeft, 70, spacing)
-        //.width(320-70)
-        .text(&CStr::from_bytes_with_nul(b"Max Speed: 5 mm/s\0").unwrap());
-
-    let position_label = Label::new(&mut screen)
-        .align(&speed_label, Align::OutBottomLeft, 0, 0)
-        .text(&CStr::from_bytes_with_nul(b"Position: 0 mm\0").unwrap());
-
-    let context = UiContext { x: 0 };
-
-    screen.context().replace(context);
-    display.load_screen(&mut screen);
-
-    //UIMoveZ { btn_move_up }
-
-    //let mut speed_slider = Slider::new(&mut screen);
-    //speed_slider.align_to(&mut screen, Align::Center, 0, 0);
+#[derive(Debug)]
+enum UserAction {
+    MoveUp,
+    MoveDown,
+    StopRequested,
+    SetSpeed(f32),
 }
 
-/*
+use drivers::stepper::prelude::*;
 
-fn draw() {
-        if stepper.access(|s| s.is_idle()) {
-            btn_down_active = false;
-            btn_up_active = false;
+pub struct MoveZ {
+    btn_move_up: Btn<Self>,
+    btn_move_down: Btn<Self>,
+    speed_slider: Slider<Self>,
+    speed_label: Label<Self>,
+    position_label: Label<Self>,
 
-            // turn off warning. Weird.
-            if btn_down_active || btn_up_active {}
+    user_action: Option<UserAction>,
+}
 
-            unsafe {
-                lvgl_sys::lv_btn_set_state(btn_up.raw().unwrap().as_mut(),
-                    lvgl_sys::LV_BTN_STATE_RELEASED as u8);
-                lvgl_sys::lv_btn_set_state(btn_down.raw().unwrap().as_mut(),
-                    lvgl_sys::LV_BTN_STATE_RELEASED as u8);
+impl MoveZ {
+    pub fn new<D>(display: &Display<D>) -> Screen::<Self> {
+        use lvgl::widgets::*;
+        use lvgl::style::*;
+        use lvgl::core::*;
+        use lvgl::prelude::*;
+
+        let spacing = 12;
+
+        let mut screen = Screen::<Self>::new(display);
+
+        let btn_move_up = Btn::new(&mut screen).apply(|obj| {
+            Label::new(obj)
+                .set_text(&CStr::from_bytes_with_nul(b"Move Up\0").unwrap());
+            obj
+            .align_to(&screen, Align::TopMid, 0, 2*spacing)
+            .add_flag(Flag::CHECKABLE)
+            .on_event(Event::Clicked, |context| {
+                let checked = context.btn_move_up.has_state(State::CHECKED);
+                context.user_action = Some(
+                    if checked { UserAction::MoveUp }
+                    else { UserAction::StopRequested }
+                );
+            });
+        });
+
+        let btn_move_down = Btn::new(&mut screen).apply(|obj| {
+            Label::new(obj)
+                .set_text(&CStr::from_bytes_with_nul(b"Move Down\0").unwrap());
+            obj
+            .align_to(&btn_move_up, Align::OutBottomMid, 0, spacing)
+            .add_flag(Flag::CHECKABLE)
+            .on_event(Event::Clicked, |context| {
+                let checked = context.btn_move_down.has_state(State::CHECKED);
+                context.user_action = Some(
+                    if checked { UserAction::MoveDown }
+                    else { UserAction::StopRequested }
+                );
+            });
+        });
+
+        let speed_slider = Slider::new(&mut screen).apply(|obj| { obj
+            .align_to(&btn_move_down, Align::OutBottomMid, 0, 2*spacing)
+            .set_range(1500, 10_000)
+            .set_value(10_000, 0)
+            .on_event(Event::ValueChanged, |context| {
+                let value = unsafe { lvgl_sys::lv_slider_get_value(context.speed_slider.raw) };
+
+                let value = (value as f32)/10000.0;
+                let value = value*value*value;
+                let value = value * 30.0;
+
+                context.user_action = Some(UserAction::SetSpeed(value));
+            });
+        });
+
+        let speed_label = Label::new(&mut screen).apply(|obj| { obj
+            .align_to(&speed_slider, Align::OutBottomLeft, 70, spacing)
+            .set_text(&CStr::from_bytes_with_nul(b"Max Speed: 5 mm/s\0").unwrap());
+        });
+
+        let position_label = Label::new(&mut screen).apply(|obj| { obj
+            .align_to(&speed_label, Align::OutBottomLeft, 0, 0)
+            .set_text(&CStr::from_bytes_with_nul(b"Position: 0 mm\0").unwrap());
+        });
+
+        Label::new(&mut screen).apply(|obj| { obj
+            .set_text(&CStr::from_bytes_with_nul(b"Turbo Resin v0.1.1\0").unwrap())
+            .align_to(&screen, Align::BottomRight, -5, -5);
+        });
+
+        let context = Self {
+            btn_move_up,
+            btn_move_down,
+            speed_slider,
+            speed_label,
+            position_label,
+
+            user_action: None,
+        };
+
+        screen.apply(|s| {
+            s.context().replace(context);
+        })
+    }
+
+    fn update(&mut self, stepper: &mut impl rtic::Mutex<T=drivers::stepper::Stepper>) {
+        match self.user_action.take() {
+            Some(UserAction::MoveUp) => {
+                stepper.lock(|s| s.set_target_relative(40.0.mm()));
+                self.btn_move_down.add_state(State::DISABLED);
+            },
+            Some(UserAction::MoveDown) => {
+                stepper.lock(|s| s.set_target_relative((-40.0).mm()));
+                self.btn_move_up.add_state(State::DISABLED);
             }
+            Some(UserAction::StopRequested) => {
+                self.btn_move_down.add_state(State::DISABLED);
+                self.btn_move_up.add_state(State::DISABLED);
+                stepper.lock(|s| s.controlled_stop());
+            }
+            Some(UserAction::SetSpeed(v)) => stepper.lock(|s| s.set_max_speed(Some(v.mm()))),
+            None => {}
         }
 
-        ui.tick_inc(Duration::from_millis(20));
-    }
 
+        let (is_idle, current_position, max_speed) = stepper.lock(|s|
+            (s.is_idle(), s.current_position, s.max_speed)
+        );
+
+        if is_idle {
+            self.btn_move_up.clear_state(State::CHECKED | State::DISABLED);
+            self.btn_move_down.clear_state(State::CHECKED | State::DISABLED);
+        }
+
+        // set_text() makes a copy of the string internally.
+        self.position_label.set_text(&CStr::from_bytes_with_nul(
+            format!("Position: {:.2} mm\0", current_position.as_mm()).as_bytes()
+        ).unwrap());
+
+        self.speed_label.set_text(&CStr::from_bytes_with_nul(
+            format!("Max speed: {:.2} mm/s\0", max_speed.as_mm()).as_bytes()
+        ).unwrap());
+    }
 }
 
-*/
+    /*
+    fn draw_touch_event(display: &mut Display, touch_event: Option<&TouchEvent>) {
+        use embedded_graphics::{prelude::*, primitives::{Circle, PrimitiveStyle}, pixelcolor::Rgb565};
 
-
-/*
-fn draw_touch_event(display: &mut Display, touch_event: Option<&TouchEvent>) {
-    use embedded_graphics::{prelude::*, primitives::{Circle, PrimitiveStyle}, pixelcolor::Rgb565};
-
-    if let Some(touch_event) = touch_event {
-        Circle::new(Point::new(touch_event.x as i32, touch_event.y as i32), 3)
-            .into_styled(PrimitiveStyle::with_fill(Rgb565::GREEN))
-            .draw(display).unwrap();
+        if let Some(touch_event) = touch_event {
+            Circle::new(Point::new(touch_event.x as i32, touch_event.y as i32), 3)
+                .into_styled(PrimitiveStyle::with_fill(Rgb565::GREEN))
+                .draw(display).unwrap();
+        }
     }
-}
 */
