@@ -1,7 +1,7 @@
 .PHONY: build run attach start_opencd start_jlink start_jlink_rtt
 
 build:
-	cargo objdump --release -- -h | ./rom_stats.py
+	cargo objdump --release -- -h | ./stuff/rom_stats.py
 
 run: build
 	cargo run --release
