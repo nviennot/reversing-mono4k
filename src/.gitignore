@@ -3,6 +3,8 @@
 .gdb_history
 target/
 
+stuff/orig-firmware.elf
+
 # editor files
 .vscode/*
 !.vscode/*.md

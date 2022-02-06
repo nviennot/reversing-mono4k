@@ -1,4 +1,4 @@
-.PHONY: build run attach start_opencd start_jlink start_jlink_rtt
+.PHONY: build run attach start_opencd start_jlink start_jlink_rtt restore_rom
 
 build:
 	cargo objdump --release -- -h | ./stuff/rom_stats.py
@@ -17,3 +17,9 @@ start_jlink:
 
 start_jlink_rtt:
 	JLinkRTTClient
+
+stuff/orig-firmware.elf: stuff/orig-firmware.bin
+	arm-none-eabi-objcopy -I binary -O elf32-little --rename-section .data=.text --change-address 0x08000000 $< $@
+
+restore_rom: stuff/orig-firmware.elf
+	arm-none-eabi-gdb -q -x gdb/run.gdb $<
