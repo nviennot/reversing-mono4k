@@ -230,7 +230,7 @@ signal has, and the more flat it appears.
 
 The voltage on the VREF pin is `3.3V * PWM_duty_cycle * R2/(R1+R2)`. The last
 term comes from the [voltage divisor with the resistors](https://en.wikipedia.org/wiki/Voltage_divider) R1 and R2.
-This divisor reduces the voltage by `10/(47+10) = 0.825`.
+This divisor reduces the voltage by `47/(47+10) = 0.825`.
 
 In the datasheet of the driver, we are told:
 
