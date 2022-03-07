@@ -14,21 +14,7 @@ need to carry additional memory to store the displayed image. Consequently, the
 FPGA needs to refresh the displayed image many times a seconds, as the image
 would fade away quickly.
 
-```
-┌────────────────┐               ┌────────────────┐             ┌────────────────┐
-│                │               │                │  MIPI DSI   │                │
-│                │  SPI 60Mb/s   │                │   1Gb/s     │                │
-│      MCU       ├──────────────►│      FPGA      ├────────────►│   LCD Panel    │
-│                │               │                │             │                │
-│                │               │                │             │                │
-└────────────────┘               └────────▲───────┘             └────────────────┘
-                                          │
-                                     ┌────▼────┐
-                                     │         │
-                                     │  SDRAM  │
-                                     │         │
-                                     └─────────┘
-```
+![diagram](diagram.png)
 
 Interfacing with the FPGA
 -------------------------
@@ -74,11 +60,11 @@ Further disassembly shows various commands that the FPGA accepts:
   palette.
 * __SetUnknown1(opcode=`0xF3`, [u16; 18])__. Don't know.
 * __GetUnknown1(opcode=`0xF4`) -> [u16; 18]__. Don't know.
-* __SetUnknown2(opcode=`0xFC`, [u16; 16])`__. Don't know.
+* __SetUnknown2(opcode=`0xFC`, [u16; 16])__. Don't know.
 
 Note that the disassembled code sends the StartDrawing command twice
 because the FPGA implementation is buggy. Not doing so makes the second drawn
-image have 1/3 of its pixels missing. We can see that the engineer where also
+image have 1/3 of its pixels missing. We can see that the engineers were also
 unsure what was going on judging by the unusual long delay they introduced
 (`delay(6000)`).
 
@@ -179,9 +165,10 @@ The high level stack is the following:
     let device_descriptor = ctrl.get_descriptor::<DeviceDescriptor>(0).await?;
   ```
 
-  All these `.await` keywords are allowing the function to return, and wait
-  until a particular event triggered from within the USB interrupt
-  routine. This means that the CPU can do something else while waiting for
+  All these `.await` keywords are allowing the function to return, wait
+  until a particular event (typically triggered from the USB interrupt
+  routine), and then being called again and resumed where it left off.
+  This means that the CPU can do something else while waiting for
   these events. Rust generates a state machine underlying so that when it's
   time to resume the work, it knows how to resume the execution of the
   function where it left off.
