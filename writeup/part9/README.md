@@ -193,7 +193,7 @@ The high level stack is the following:
   Workshop print files. To understand the format of such files, I used the
   work of Tiago Conceição, [UVtools](https://github.com/sn4k3/UVtools). It has
   support for a variety of print file formats, including the [Photon Workshop
-  format](https://github.com/sn4k3/UVtools/blob/4f3dd8b3a7597ce5a9b7b45d2d825bd4ab03e07f/UVtools.Core/FileFormats/PhotonWorkshopFile.cs) that my Mono X 4k normally ingests. I made a Kaitai Struct ([photon.ksy](https://github.com/nviennot/turbo-resin/blob/main/src/file_formats/photon.ksy)), and a Rust parser ([photon.rs][https://github.com/nviennot/turbo-resin/blob/main/src/file_formats/photon.rs)).
+  format](https://github.com/sn4k3/UVtools/blob/4f3dd8b3a7597ce5a9b7b45d2d825bd4ab03e07f/UVtools.Core/FileFormats/PhotonWorkshopFile.cs) that my Mono X 4k normally ingests. I made a Kaitai Struct ([photon.ksy](https://github.com/nviennot/turbo-resin/blob/main/src/file_formats/photon.ksy)), and a Rust parser ([photon.rs](https://github.com/nviennot/turbo-resin/blob/main/src/file_formats/photon.rs)).
 
 We can finally display USB print file layers on the LCD panel. After a couple
 of performance optimization, we get:
@@ -203,7 +203,7 @@ of performance optimization, we get:
 The image transfer from the USB stick to the LCD is roughly 2x faster than the
 original firmware. My implementation is fast, but I think there's a way to
 make it even faster, by pipelining the decoded data to the LCD using DMA, but
-the performance were worst when I tried.
+the performance was worst when I tried.
 
 Multiple exposures
 ------------------
@@ -220,7 +220,7 @@ exposure time yielding the best print results.
 
 Printing the test objects one by one is time consuming, and uses a lot of
 latex gloves and paper towel. So we want to print multiple objects, with
-different expsure, at once. There's a feature of the Anycubic printers that if
+different exposure, at once. There's a feature of the Anycubic printers that if
 the print file is called `R_E_R_F`, then it would do that multiple exposure
 technique. Sadly, it's not well supported for the Mono X 4k, and there's no
 way to configure the exposure increments.
@@ -233,7 +233,7 @@ We want to show 1 tile, then two tiles, etc. with a fixed exposure increment
 as low as `0.1s`. Drawing a full frame takes a minimum of `0.6s`, and for the
 XP2 validation matrix, for the layers with a lot of details, it takes `2.5s`
 due to the way the files are encoded.
-To be able to do `0.1s` increment on the expoure, we would need to turn off
+To be able to do `0.1s` increment on the exposure, we would need to turn off
 the UV light, redraw the image on the LCD, turn on the UV light, etc. For 6
 tiles, that's an additional `12.5s` per printed layer to redraw all the tiles.
 For 20 layers XP2, that's roughly 5mins (okay, okay, not a huge deal). But for
@@ -283,7 +283,7 @@ instead of having a linear ramp.
 Conclusion
 ----------
 
-This is the last article of the Reverse enginering series. At this point, we
+This is the last article of the Reverse engineering series. At this point, we
 have everything we need to know to finish the firmware and do some 3d printing.
 
 [Elliot from Tiny Labs](https://github.com/tinylabs) is helping on
