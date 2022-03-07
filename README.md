@@ -16,6 +16,7 @@ open-source firmware [Turbo Resin](https://github.com/nviennot/turbo-resin).
 * [Part 6: Taking control of the user-facing LCD display](/writeup/part6/README.md)
 * [Part 7: Detecting touches on the display and improving on the original firmware](/writeup/part7/README.md)
 * [Part 8: Driving the Z-axis stepper motor](/writeup/part8/README.md)
+* [Part 9: Driving the LCD Panel, and displaying a print layer from the USB stick](/writeup/part9/README.md)
 
 ## Introduction
 
@@ -32,9 +33,11 @@ Here's an example of a printed object.
 
 ![Printed Bracket](/writeup/part1/bracket_print.jpg)
 
-There are visible lines due to the lack of anti-aliasing support on the printer.
+~~There are visible lines due to the lack of anti-aliasing support on the printer.
 Its LCD screen outputs only fully transparent, or fully opaque pixels, no gray-scale.
-Apparently, we have to wait for a firmware update, but I'd rather not wait.
+Apparently, we have to wait for a firmware update, but I'd rather not wait.~~
+
+Update: The original firmware handles anti-aliasing just fine.
 
 Reverse engineering the printer will guide our implementation of a new firmware,
 [Turbo Resin](https://github.com/nviennot/turbo-resin), so we can add the
@@ -48,4 +51,5 @@ features that we want.
 * PCB photos: [pcb](/pcb) folder
 * Pin config: [print_ports_config.py](/firmware/print_ports_config.py) and [port_config.txt](/firmware/port_config.txt)
 * Turbo Resin firmware: (https://github.com/nviennot/turbo-resin)
+* Our discord channel: https://discord.gg/9HSMNYxPAM
 

@@ -307,3 +307,7 @@ interface:
 I'm using [LVGL](https://lvgl.io/) for the UI which is much nicer than the
 original interface. It brings a large footprint on the ROM, but I think it's
 worth using.
+
+Next, we are going to display iamges on the LCD panel.
+
+[Go to Part 9](../part9/README.md)
