@@ -17,6 +17,7 @@ open-source firmware [Turbo Resin](https://github.com/nviennot/turbo-resin).
 * [Part 7: Detecting touches on the display and improving on the original firmware](/writeup/part7/README.md)
 * [Part 8: Driving the Z-axis stepper motor](/writeup/part8/README.md)
 * [Part 9: Driving the LCD Panel, and displaying a print layer from the USB stick](/writeup/part9/README.md)
+* [Part 10: Elegoo Saturn: display images from USB to the LCD panel](/writeup/part10/README.md)
 
 ## Introduction
 
