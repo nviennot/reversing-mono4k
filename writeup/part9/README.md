@@ -16,6 +16,8 @@ would fade away quickly.
 
 ![diagram](diagram.png)
 
+Edit: The diagram has an error, the SPI speed is 30Mb/s, not 60 Mb/s.
+
 Interfacing with the FPGA
 -------------------------
 

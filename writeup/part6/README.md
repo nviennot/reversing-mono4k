@@ -79,7 +79,7 @@ Max clock speed  | `STM32f10x` | `GD32F30x`
 System clock     | 72 MHz      | 120 MHz
 Peripheral Bus 1 | 36 MHz      | 60 MHz
 Peripheral Bus 2 | 72 MHz      | 120 MHz
-ADC bus          | 40 Mhz      | 14 MHz
+ADC bus          | 14 Mhz      | 40 MHz
 
 The `GD32` has naturally more register configuration settings than the `stm32`
 to set the clock speed. For example, you can set the PLL multipler up to x63,
