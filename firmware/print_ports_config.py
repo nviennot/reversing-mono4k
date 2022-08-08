@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 
+# XXX There's a better tool: https://github.com/nviennot/stm32-port-monitor/
+# You can monitor the STM32 ports in real-time with this.
+# The tool connects to GDB, reads the port registers, and print their status.
+
 # Mem32 0x40010800, 4
 # Mem32 0x40010C00, 4
 # Mem32 0x40011000, 4
